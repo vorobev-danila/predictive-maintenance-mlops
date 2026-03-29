@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools"]              #  Инструмент для сборки
+build-backend = "setuptools.build_meta" #  Как именно собирать
+
+[project]
+name = "predictive-maintenance-mlops"    #  Как меня зовут
+version = "0.1.0"                      #  Какая у меня версия
+description = "Прогнозирование поломок" #  Что я делаю
+requires-python = ">=3.12"             #  Какая версия Python нужна
+dependencies = []                      #  Какие библиотеки нужны (пока пусто)
