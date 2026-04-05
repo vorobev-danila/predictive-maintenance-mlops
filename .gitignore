@@ -1,7 +1,56 @@
+# Python байт-код и кэш
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Файлы сборки и дистрибуции
+*.egg-info/
+*.egg
+.Python
+build/
+dist/
+*.so
+
+# Виртуальное окружение
 .env
+venv/
+.venv/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Файлы данных и моделей
 data/*
 models/*
+reports/*.json
+src/data/datasets/*.txt
+src/data/datasets/*.zip
+src/data/datasets/*.pdf
+
+# DVC
 .dvc/cache
-venv/*
+
+# Редакторы и IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Тестирование и покрытие
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Логи
+*.log
+
+# Файлы блокировки зависимостей
+poetry.lock
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
