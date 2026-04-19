@@ -14,6 +14,6 @@ def evaluate_on_test(model, X_test, y_test):
     print("Результаты на тесте")
     print(f"MAE: {test_mae:.2f} циклов")
     print(f"RMSE: {test_rmse:.2f} циклов")
-    print(f"R²: {test_r2:.3f}")
+    print(f"R2: {test_r2:.3f}")
     
     return test_mae, test_rmse, test_r2

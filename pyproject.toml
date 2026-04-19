@@ -13,7 +13,10 @@ dependencies = [
     "matplotlib>=3.6.0",
     "seaborn>=0.12.0",
     "scikit-learn>=1.2.0",
-    "joblib>=1.2.0"
+    "joblib>=1.2.0",
+    "fastapi>=0.136.0",
+    "uvicorn>=0.44.0",
+    "scalar-fastapi>=1.8.2",
 ]
 
 [project.optional-dependencies]

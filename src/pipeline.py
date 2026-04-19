@@ -65,15 +65,15 @@ def main():
     print(f"Параметры: n_estimators=30, max_depth=5, min_samples_split=20, min_samples_leaf=10")
     print(f"\nКачество на валидации:")
     print(f"  MAE: {val_mae:.2f} циклов")
-    print(f"  R²: {val_r2:.3f}")
+    print(f"  R2: {val_r2:.3f}")
     print(f"\nКачество на тесте:")
     print(f"  MAE: {test_mae:.2f} циклов")
-    print(f"  R²: {test_r2:.3f}")
+    print(f"  R2: {test_r2:.3f}")
     print(f"\nСредняя длительность жизни двигателя: {engine_lifetime.mean():.1f} циклов")
     print(f"Относительная ошибка на тесте: {(test_mae / engine_lifetime.mean()) * 100:.1f}%")
     
     if test_r2 > 0.5:
-        print("\nМодель показывает хорошее качество. R² > 0.5")
+        print("\nМодель показывает хорошее качество. R2 > 0.5")
     else:
         print("\nКачество модели ниже ожидаемого. Требуется доработка")
     

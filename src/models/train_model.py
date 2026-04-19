@@ -31,7 +31,7 @@ def train_random_forest(X_train, y_train, X_val, y_val):
     print(f"Валидационная MAE: {val_mae:.2f}")
     print(f"Обучающая RMSE: {train_rmse:.2f}")
     print(f"Валидационная RMSE: {val_rmse:.2f}")
-    print(f"Обучающая R²: {train_r2:.3f}")
-    print(f"Валидационная R²: {val_r2:.3f}")
+    print(f"Обучающая R2: {train_r2:.3f}")
+    print(f"Валидационная R2: {val_r2:.3f}")
     
     return model, train_mae, val_mae, train_rmse, val_rmse, train_r2, val_r2

@@ -1,0 +1,59 @@
+# Python байт-код и кэш
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Файлы сборки и дистрибуции
+*.egg-info/
+*.egg
+.Python
+build/
+dist/
+*.so
+
+# Виртуальное окружение
+.env
+venv/
+.venv/
+ENV/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# Файлы данных (сырые данные не нужны в контейнере)
+data/
+reports/
+src/data/datasets/
+
+# DVC
+.dvc/
+
+# Редакторы и IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Тестирование и покрытие
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Логи
+*.log
+
+# Файлы блокировки зависимостей (uv.lock не копируем, зависимости устанавливаются заново)
+uv.lock
+poetry.lock
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.dockerignore
