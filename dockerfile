@@ -10,6 +10,11 @@ WORKDIR /app
 # Копируем файл с зависимостями из проекта в контейнер
 COPY pyproject.toml uv.lock ./
 
+ENV PIP_INDEX_URL=https://pypi.org/simple
+ENV PIP_DEFAULT_TIMEOUT=100
+ENV UV_HTTP_TIMEOUT=100
+ENV UV_HTTP_RETRIES=5
+
 # Устанавливаем все библиотеки из pyproject.toml
 RUN uv sync --frozen --no-dev
 

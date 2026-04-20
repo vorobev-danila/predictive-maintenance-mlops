@@ -23,15 +23,16 @@ ENV/
 *.ipynb
 
 # Файлы данных и моделей
-data/*
-models/*
+data/raw/
+data/processed/
 reports/*.json
 src/data/datasets/*.txt
 src/data/datasets/*.zip
 src/data/datasets/*.pdf
 
 # DVC
-.dvc/cache
+!*.dvc
+!.dvc/config
 
 # Редакторы и IDE
 .vscode/
