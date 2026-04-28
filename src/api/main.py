@@ -10,6 +10,9 @@ import logging
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
+from prometheus_fastapi_instrumentator import Instrumentator
+from prometheus_client import Gauge
+from prometheus_client import Gauge, REGISTRY
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
@@ -49,6 +52,27 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Инициализация Instrumentator для сбора метрик
+instrumentator = Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+    should_respect_env_var=False,
+    should_instrument_requests_inprogress=True,
+    excluded_handlers=["/metrics", "/health"],
+    env_var_name="ENABLE_METRICS",
+    inprogress_name="http_requests_inprogress",
+    inprogress_labels=True,
+)
+
+# Добавляем стандартные метрики
+instrumentator.add().instrument(app).expose(app, endpoint="/metrics")
+
+try:
+    predicted_rul_gauge = Gauge("model_predicted_rul", "Predicted RUL value")
+except ValueError:
+    # Если Uvicorn перезагрузил код и метрика уже существует, просто берем её из памяти
+    predicted_rul_gauge = REGISTRY._names_to_collectors["model_predicted_rul"]
 
 # Middleware для логирования запросов
 @app.middleware("http")
@@ -99,8 +123,8 @@ async def health_check():
     return {"status": "ok"}
 
 # Эндпоинт для получения метрик модели
-@app.get("/metrics")
-async def get_metrics():
+@app.get("/model_metrics")
+async def get_model_metricss():
     metrics_path = "models/metrics.json"
     try:
         with open(metrics_path, "r") as f:
@@ -174,10 +198,10 @@ async def predict(data: SensorData):
     input_df = input_df[feature_names]
     input_scaled = scaler.transform(input_df)
     prediction = model.predict(input_scaled)[0]
-    
+    predicted_rul_gauge.set(float(prediction)) 
+
     return PredictionResponse(rul=float(prediction), status="success")
 
-# Точка входа при запуске файла напрямую
 if __name__ == "__main__":
-    print("Сервер запущен. Откройте документацию: http://localhost:8080/docs")
+    print("Сервер запущен. Откройте в браузере: http://localhost:8080/docs")
     uvicorn.run("src.api.main:app", host="0.0.0.0", port=8080, reload=True)

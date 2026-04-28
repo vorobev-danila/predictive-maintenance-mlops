@@ -10,6 +10,7 @@ services:
       - mlflow
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      ENABLE_METRICS: "true"
 
   minio:
     image: minio/minio
@@ -41,5 +42,24 @@ services:
       --default-artifact-root s3://mlflow
       --host 0.0.0.0
 
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
 volumes:
   minio_data:
+  grafana-storage:
