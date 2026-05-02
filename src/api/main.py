@@ -70,9 +70,11 @@ instrumentator.add().instrument(app).expose(app, endpoint="/metrics")
 
 try:
     predicted_rul_gauge = Gauge("model_predicted_rul", "Predicted RUL value")
+    actual_rul_gauge = Gauge("model_actual_rul", "Actual Ground Truth RUL")
 except ValueError:
     # Если Uvicorn перезагрузил код и метрика уже существует, просто берем её из памяти
     predicted_rul_gauge = REGISTRY._names_to_collectors["model_predicted_rul"]
+    actual_rul_gauge = REGISTRY._names_to_collectors["model_actual_rul"]
 
 # Middleware для логирования запросов
 @app.middleware("http")
@@ -110,6 +112,7 @@ class SensorData(BaseModel):
     setting1: float = Field(..., description="Настройка режима 1")
     setting2: float = Field(..., description="Настройка режима 2")
     setting3: float = Field(..., description="Настройка режима 3")
+    actual_rul: float = Field(default=None, description="Реальный RUL (опционально для тестов)")
 
 class PredictionResponse(BaseModel):
     rul: float = Field(..., description="Предсказанный остаточный ресурс в циклах")
@@ -200,7 +203,17 @@ async def predict(data: SensorData):
     prediction = model.predict(input_scaled)[0]
     predicted_rul_gauge.set(float(prediction)) 
 
+    # проверка на реальный RUL
+    if data.actual_rul is not None:
+            actual_rul_gauge.set(float(data.actual_rul))
+
     return PredictionResponse(rul=float(prediction), status="success")
+
+@app.post("/reset_metrics")
+async def reset_metrics():
+    predicted_rul_gauge.set(0.0)
+    actual_rul_gauge.set(0.0)
+    return {"status": "metrics reset to 0"}
 
 if __name__ == "__main__":
     print("Сервер запущен. Откройте в браузере: http://localhost:8080/docs")
