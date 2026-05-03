@@ -26,6 +26,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
+    "httpx>=0.27.0",
     "black>=22.0.0",
     "flake8>=5.0.0"
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

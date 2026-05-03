@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: predictive-maintenance-api
+  labels:
+    app: predictive-maintenance-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: predictive-maintenance-api
+  template:
+    metadata:
+      labels:
+        app: predictive-maintenance-api
+    spec:
+      containers:
+        - name: api
+          image: predictive-maintenance-mlops:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
+            - name: MLFLOW_REGISTERED_MODEL_NAME
+              value: "predictive-maintenance-random-forest"
+            - name: ENABLE_METRICS
+              value: "true"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 20

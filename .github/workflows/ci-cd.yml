@@ -1,0 +1,52 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  lint-test-build-deploy:
+    name: Lint, test, build, deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Run linter
+        run: uv run flake8 src tests
+
+      - name: Check formatting
+        run: uv run black --check src tests
+
+      - name: Run tests
+        run: uv run pytest
+
+      - name: Build Docker image
+        run: docker build -t predictive-maintenance-mlops:latest .
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+
+      - name: Load Docker image into kind
+        run: kind load docker-image predictive-maintenance-mlops:latest
+
+      - name: Deploy to Kubernetes
+        run: kubectl apply -f k8s/
+
+      - name: Wait for API deployment
+        run: kubectl rollout status deployment/predictive-maintenance-api --timeout=120s

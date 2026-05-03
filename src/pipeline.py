@@ -19,7 +19,6 @@ from features.feature_engineering import prepare_data, select_all_sensors
 from models.save_model import save_model
 from models.train_model import train_random_forest
 
-
 MODEL_PARAMS = {
     "n_estimators": 30,
     "max_depth": 5,
