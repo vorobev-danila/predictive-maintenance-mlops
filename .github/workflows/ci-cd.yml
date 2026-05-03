@@ -4,12 +4,12 @@ on:
   pull_request:
     branches: ["main"]
   push:
-    branches: ["main"]
+    branches: ["main", "features"]
   workflow_dispatch:
 
 jobs:
-  lint-test-build-deploy:
-    name: Lint, test, build, deploy
+  lint-test-build:
+    name: Lint, test, build
     runs-on: ubuntu-latest
 
     steps:
@@ -35,6 +35,19 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+      - name: Build Docker image
+        run: docker build -t predictive-maintenance-mlops:latest .
+
+  deploy:
+    name: Deploy to kind
+    needs: lint-test-build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Build Docker image
         run: docker build -t predictive-maintenance-mlops:latest .
