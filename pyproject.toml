@@ -19,6 +19,8 @@ dependencies = [
     "scalar-fastapi>=1.8.2",
     "prometheus-fastapi-instrumentator>=7.1.0",
     "dvc[s3]>=3.67.1",
+    "mlflow>=3.5.0",
+    "boto3>=1.42.84",
 ]
 
 [project.optional-dependencies]
