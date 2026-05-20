@@ -253,7 +253,7 @@ async def predict(data: SensorData):
     if model is None or scaler is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
 
-    input_dict = data.dict()
+    input_dict = data.model_dump()
     input_df = pd.DataFrame([input_dict])
     input_df = input_df[feature_names]
     input_scaled = scaler.transform(input_df)
