@@ -7,11 +7,12 @@ import pandas as pd
 import json
 import subprocess
 import logging
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Gauge, REGISTRY
+from storage.prediction_repository import PredictionRepository
 
 sys.path.insert(
     0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -25,15 +26,22 @@ logger = logging.getLogger(__name__)
 model = None
 scaler = None
 feature_names = None
+prediction_repository = None
+
+
+def get_prediction_db_path():
+    return os.getenv("PREDICTION_DB_PATH", "state/predictions.db")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global model, scaler, feature_names
+    global model, scaler, feature_names, prediction_repository
 
     model_path = "models/random_forest_model.pkl"
     scaler_path = "models/scaler.pkl"
     features_path = "models/features.json"
+    prediction_repository = PredictionRepository(get_prediction_db_path())
+    prediction_repository.initialize()
 
     try:
         model = joblib.load(model_path)
@@ -150,8 +158,19 @@ class SensorData(BaseModel):
 
 
 class PredictionResponse(BaseModel):
+    prediction_id: int = Field(..., description="ID сохраненного предсказания")
     rul: float = Field(..., description="Предсказанный остаточный ресурс в циклах")
     status: str = Field(..., description="Статус выполнения запроса")
+
+
+class PredictionHistoryItem(BaseModel):
+    id: int
+    created_at: str
+    input: dict
+    predicted_rul: float
+    actual_rul: float | None = None
+    anomaly_flag: bool
+    model_version: str | None = None
 
 
 # Эндпоинт для проверки работоспособности
@@ -250,7 +269,7 @@ async def reload_model():
 # Основной эндпоинт для предсказания
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(data: SensorData):
-    if model is None or scaler is None:
+    if model is None or scaler is None or prediction_repository is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
 
     input_dict = data.model_dump()
@@ -264,7 +283,27 @@ async def predict(data: SensorData):
     if data.actual_rul is not None:
         actual_rul_gauge.set(float(data.actual_rul))
 
-    return PredictionResponse(rul=float(prediction), status="success")
+    saved_prediction = prediction_repository.create_prediction(
+        input_payload=input_dict,
+        predicted_rul=float(prediction),
+        actual_rul=data.actual_rul,
+        anomaly_flag=False,
+        model_version=os.getenv(
+            "MLFLOW_REGISTERED_MODEL_NAME", "predictive-maintenance-random-forest"
+        ),
+    )
+
+    return PredictionResponse(
+        prediction_id=saved_prediction["id"], rul=float(prediction), status="success"
+    )
+
+
+@app.get("/predictions/recent", response_model=list[PredictionHistoryItem])
+async def get_recent_predictions(limit: int = Query(default=20, ge=1, le=100)):
+    if prediction_repository is None:
+        raise HTTPException(status_code=503, detail="Prediction storage is not ready")
+
+    return prediction_repository.list_recent(limit=limit)
 
 
 @app.post("/reset_metrics")

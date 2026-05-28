@@ -122,6 +122,7 @@ password: admin
 
 - `GET /health` - проверка загрузки модели.
 - `POST /predict` - предсказание RUL по sensor/settings payload.
+- `GET /predictions/recent` - последние сохраненные предсказания из SQLite.
 - `GET /model_metrics` - метрики последней сохраненной модели.
 - `POST /retrain` - запуск переобучения модели.
 - `GET /metrics` - Prometheus metrics.
@@ -273,6 +274,14 @@ Kubernetes manifests включают:
 ```
 
 Это проще, чем отдельный PostgreSQL-сервис, и достаточно для учебного Minikube-стенда. Если позже потребуется production-like режим с несколькими replica API, SQLite можно заменить на PostgreSQL через repository-слой без переписывания бизнес-логики.
+
+API уже записывает каждое успешное предсказание в SQLite и отдает последние записи:
+
+```bash
+curl "http://localhost:8080/predictions/recent?limit=20"
+```
+
+Эта история будет использоваться следующими этапами: web UI, флаги аномалий и расчет drift по окнам предсказаний.
 
 ## CI/CD
 

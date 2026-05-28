@@ -27,6 +27,7 @@ ENV/
 data/raw/
 data/processed/
 reports/*.json
+state/
 src/data/datasets/*.txt
 src/data/datasets/*.zip
 src/data/datasets/*.pdf
