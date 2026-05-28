@@ -1,0 +1,49 @@
+# Project Overview
+
+[← Back to README](../../README.md)
+
+## Contents
+
+- [Purpose](#purpose)
+- [MLOps scope](#mlops-scope)
+- [Current components](#current-components)
+
+## Purpose
+
+Predictive Maintenance MLOps прогнозирует остаточный ресурс авиационного
+двигателя в циклах эксплуатации. Задача построена вокруг датасета NASA CMAPSS
+и базовой модели `RandomForestRegressor`.
+
+Проект показывает не только обучение модели, но и полный контур вокруг нее:
+tracking, serving, storage, CI/CD, контейнеризацию и запуск в Kubernetes.
+
+## MLOps Scope
+
+| Area | Implementation |
+| --- | --- |
+| Dataset | NASA CMAPSS, `data/raw` |
+| Model | scikit-learn `RandomForestRegressor` |
+| Training | `src/pipeline.py` |
+| Experiment tracking | MLflow |
+| Artifact storage | MinIO bucket `mlflow` |
+| Data versioning | DVC remote in MinIO bucket `dvc` |
+| Serving | FastAPI, OpenAPI `/docs` |
+| Prediction history | SQLite database `state/predictions.db` |
+| Monitoring | Prometheus + Grafana |
+| Packaging | Docker image |
+| Local debug | Docker Compose |
+| Orchestration | Kubernetes / Minikube |
+| CI/CD | GitHub Actions |
+| Template | Cookiecutter |
+
+## Current Components
+
+- `src/pipeline.py` loads data, builds features, trains the model, evaluates it
+  and logs metadata to MLflow.
+- `src/api/main.py` exposes inference, metrics, retraining and prediction history.
+- `src/storage/prediction_repository.py` isolates SQLite persistence from API logic.
+- `k8s/` contains manifests for API, MinIO, MLflow, Prometheus and Grafana.
+- `.github/workflows/ci-cd.yml` validates code, tests, Docker build and Kubernetes deploy.
+
+Next planned areas are drift reports, web UI, anomaly flags, richer Grafana
+dashboards and Argo CD delivery.
