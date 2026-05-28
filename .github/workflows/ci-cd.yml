@@ -27,6 +27,18 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --frozen
 
+      - name: Validate Docker Compose config
+        run: docker compose config --quiet
+
+      - name: Validate Kubernetes manifests
+        run: >
+          docker run --rm
+          -v "${{ github.workspace }}:/work"
+          ghcr.io/yannh/kubeconform:latest
+          -strict
+          -summary
+          /work/k8s
+
       - name: Run linter
         run: uv run flake8 src tests
 
@@ -34,7 +46,7 @@ jobs:
         run: uv run black --check src tests
 
       - name: Run tests
-        run: uv run pytest
+        run: uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=60
 
       - name: Build Docker image
         run: docker build -t predictive-maintenance-mlops:latest .
@@ -52,6 +64,9 @@ jobs:
       - name: Build Docker image
         run: docker build -t predictive-maintenance-mlops:latest .
 
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
       - name: Create kind cluster
         uses: helm/kind-action@v1.12.0
 
@@ -63,3 +78,15 @@ jobs:
 
       - name: Wait for API deployment
         run: kubectl rollout status deployment/predictive-maintenance-api --timeout=120s
+
+      - name: Smoke test API health endpoint
+        run: |
+          kubectl port-forward service/predictive-maintenance-api 8080:8080 > /tmp/api-port-forward.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail http://127.0.0.1:8080/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/api-port-forward.log
+          exit 1

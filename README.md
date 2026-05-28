@@ -47,6 +47,14 @@ MLOps-проект для прогнозирования остаточного 
 - Git
 - DVC, если нужно работать с версионированием данных
 
+Подготовить локальные переменные окружения:
+
+```bash
+cp .env.example .env
+```
+
+Файл `.env` используется Docker Compose автоматически. В репозиторий он не коммитится; в Git хранится только безопасный пример `.env.example`.
+
 Установить зависимости:
 
 ```bash
@@ -148,6 +156,22 @@ dvc push
 
 DVC remote настроен на MinIO bucket `dvc`.
 
+Для локального доступа к MinIO DVC берет credentials из переменных окружения:
+
+```bash
+export AWS_ACCESS_KEY_ID=minio
+export AWS_SECRET_ACCESS_KEY=minio123
+```
+
+В PowerShell:
+
+```powershell
+$env:AWS_ACCESS_KEY_ID="minio"
+$env:AWS_SECRET_ACCESS_KEY="minio123"
+```
+
+Сами ключи не должны храниться в `.dvc/config`; в Kubernetes они должны задаваться через `Secret`.
+
 ## Тесты и линтеры
 
 Запустить тесты:
@@ -220,11 +244,34 @@ Workflow: `.github/workflows/ci-cd.yml`.
 Pipeline делает:
 
 1. `uv sync --all-extras --frozen`
-2. `uv run flake8 src tests`
-3. `uv run black --check src tests`
-4. `uv run pytest`
-5. `docker build`
-6. deploy в временный kind Kubernetes cluster для PR в `main` и push в `main`
+2. `docker compose config --quiet`
+3. `kubeconform -strict -summary k8s/`
+4. `uv run flake8 src tests`
+5. `uv run black --check src tests`
+6. `uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=60`
+7. `docker build`
+8. deploy в временный kind Kubernetes cluster для PR в `main` и push в `main`
+9. smoke test `/health` после Kubernetes deploy
+
+## Git flow
+
+В проекте используется простой feature branch flow:
+
+1. `main` - стабильная ветка.
+2. Разработка ведется в feature-ветках, например `features` или `feature/<task-name>`.
+3. Из feature-ветки открывается Pull Request в `main`.
+4. GitHub Actions должен пройти lint, format check, tests, Docker build и deploy/smoke test.
+5. После успешного PR изменения вливаются в `main`.
+
+Коммиты оформляются в стиле Conventional Commits:
+
+```text
+feat(api): add prediction history endpoint
+fix(ci): validate kubernetes manifests
+test: add drift calculator tests
+docs: update minikube launch guide
+chore(dvc): move credentials to environment
+```
 
 ## Cookiecutter
 

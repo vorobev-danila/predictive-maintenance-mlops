@@ -21,6 +21,7 @@ ENV/
 # Jupyter Notebook
 .ipynb_checkpoints/
 *.ipynb
+!notebooks/predictive-maintenance-mlops-advanced-experiments.ipynb
 
 # Файлы данных и моделей
 data/raw/
