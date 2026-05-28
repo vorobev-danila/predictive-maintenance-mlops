@@ -29,7 +29,7 @@ MLOps-проект для прогнозирования остаточного 
 |   |-- evaluation/           # оценка качества
 |   `-- pipeline.py           # полный training pipeline + MLflow
 |-- tests/                    # pytest тесты API
-|-- k8s/                      # Kubernetes Deployment и Service
+|-- k8s/                      # Kubernetes manifests для API, MLflow, MinIO, Prometheus, Grafana
 |-- cookiecutter-template/    # шаблон проекта
 |-- Dockerfile
 |-- docker-compose.yml
@@ -214,7 +214,9 @@ docker run --rm -p 8080:8080 predictive-maintenance-mlops:latest
 
 ## Kubernetes / minikube
 
-Собрать image и загрузить его в minikube:
+Основной целевой запуск проекта - Kubernetes/Minikube. `docker-compose.yml` остается удобным debug-режимом для локальной разработки.
+
+Собрать image, загрузить его в minikube и применить все manifests:
 
 ```bash
 minikube start
@@ -222,13 +224,55 @@ docker build -t predictive-maintenance-mlops:latest .
 minikube image load predictive-maintenance-mlops:latest
 kubectl apply -f k8s/
 kubectl rollout status deployment/predictive-maintenance-api
+kubectl rollout status deployment/minio
+kubectl rollout status deployment/mlflow
+kubectl rollout status deployment/prometheus
+kubectl rollout status deployment/grafana
 ```
 
-Получить URL сервиса:
+Получить URL API:
 
 ```bash
 minikube service predictive-maintenance-api --url
 ```
+
+Открыть остальные сервисы:
+
+```bash
+minikube service mlflow --url
+minikube service minio --url
+minikube service prometheus --url
+minikube service grafana --url
+```
+
+Если `minikube service` не открывает URL автоматически, можно использовать port-forward:
+
+```bash
+kubectl port-forward service/predictive-maintenance-api 8080:8080
+kubectl port-forward service/mlflow 5000:5000
+kubectl port-forward service/minio 9000:9000
+kubectl port-forward service/minio 9001:9001
+kubectl port-forward service/prometheus 9090:9090
+kubectl port-forward service/grafana 3000:3000
+```
+
+Kubernetes manifests включают:
+
+- API Deployment и NodePort Service;
+- MinIO Deployment, Service и Job для создания buckets `mlflow` и `dvc`;
+- MLflow Deployment и Service;
+- Prometheus Deployment, Service и ConfigMap;
+- Grafana Deployment и Service;
+- PVC для API state, MinIO, MLflow, Prometheus и Grafana;
+- ConfigMap и Secret для runtime-настроек.
+
+Для будущей истории предсказаний и drift metadata выбран SQLite. Файл БД будет храниться в PVC API по пути:
+
+```text
+/app/state/predictions.db
+```
+
+Это проще, чем отдельный PostgreSQL-сервис, и достаточно для учебного Minikube-стенда. Если позже потребуется production-like режим с несколькими replica API, SQLite можно заменить на PostgreSQL через repository-слой без переписывания бизнес-логики.
 
 ## CI/CD
 

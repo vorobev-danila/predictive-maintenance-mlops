@@ -9,3 +9,5 @@ data:
   MLFLOW_REGISTERED_MODEL_NAME: "predictive-maintenance-random-forest"
   MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
   ENABLE_METRICS: "true"
+  APP_STATE_DIR: "/app/state"
+  PREDICTION_DB_PATH: "/app/state/predictions.db"
