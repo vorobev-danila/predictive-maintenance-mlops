@@ -21,6 +21,7 @@ Docker, Kubernetes/Minikube, Prometheus/Grafana и CI/CD в GitHub Actions.
 | MLflow, MinIO и DVC | [docs/guides/mlflow-dvc.md](docs/guides/mlflow-dvc.md) |
 | Docker и Docker Compose | [docs/guides/docker.md](docs/guides/docker.md) |
 | Kubernetes / Minikube | [docs/guides/kubernetes.md](docs/guides/kubernetes.md) |
+| Drift monitoring | [docs/guides/monitoring.md](docs/guides/monitoring.md) |
 | CI/CD | [docs/workflows/ci-cd.md](docs/workflows/ci-cd.md) |
 | Git flow | [docs/workflows/git-flow.md](docs/workflows/git-flow.md) |
 | Cookiecutter template | [docs/templates/cookiecutter.md](docs/templates/cookiecutter.md) |
@@ -35,6 +36,7 @@ Docker, Kubernetes/Minikube, Prometheus/Grafana и CI/CD в GitHub Actions.
 - **Трекинг:** MLflow, backend store и артефакты через MinIO.
 - **Данные:** DVC с S3-compatible remote в MinIO.
 - **Мониторинг:** Prometheus metrics и Grafana.
+- **Drift:** data drift, target drift, concept drift и JSON-отчеты.
 - **Контейнеризация:** `Dockerfile` и `docker-compose.yml`.
 - **Оркестрация:** Kubernetes manifests в `k8s/`.
 - **CI/CD:** GitHub Actions workflow `.github/workflows/ci-cd.yml`.
@@ -55,6 +57,7 @@ Docker, Kubernetes/Minikube, Prometheus/Grafana и CI/CD в GitHub Actions.
 - [MLflow and DVC](docs/guides/mlflow-dvc.md) - tracking, registry, MinIO buckets, DVC remote.
 - [Docker guide](docs/guides/docker.md) - compose, адреса сервисов, ручная сборка image.
 - [Kubernetes guide](docs/guides/kubernetes.md) - запуск в Minikube и состав manifests.
+- [Monitoring and drift](docs/guides/monitoring.md) - расчет drift, отчеты и Prometheus metrics.
 
 ### Workflows
 

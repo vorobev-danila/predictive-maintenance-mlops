@@ -22,8 +22,8 @@ ENV/
 .ipynb_checkpoints/
 *.ipynb
 
-# Файлы данных (сырые данные не нужны в контейнере)
-data/
+# Файлы данных
+data/processed/
 reports/
 src/data/datasets/
 

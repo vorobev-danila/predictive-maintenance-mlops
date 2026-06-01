@@ -24,6 +24,13 @@ COPY src/ ./src/
 # Копируем папку с обученной моделью в контейнер
 COPY models/ ./models/
 
+# Создаём runtime-директории. DVC-данные для drift подаются через volume или dvc pull.
+RUN mkdir -p /app/data/raw /app/state /app/reports
+
+ENV DRIFT_DATA_PATH=/app/data/raw
+ENV REPORTS_DIR=/app/reports
+ENV PREDICTION_DB_PATH=/app/state/predictions.db
+
 # Активируем виртуальное окружение для CMD
 ENV PATH="/app/.venv/bin:$PATH"
 

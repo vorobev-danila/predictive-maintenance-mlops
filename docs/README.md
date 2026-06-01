@@ -24,6 +24,7 @@
 | [MLflow and DVC](guides/mlflow-dvc.md) | Tracking, registry, MinIO, DVC |
 | [Docker](guides/docker.md) | Docker Compose и ручная сборка image |
 | [Kubernetes](guides/kubernetes.md) | Minikube и Kubernetes manifests |
+| [Monitoring and drift](guides/monitoring.md) | Drift reports и Prometheus metrics |
 
 ### Workflows
 

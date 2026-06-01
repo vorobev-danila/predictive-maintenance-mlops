@@ -38,6 +38,8 @@ curl http://localhost:8080/openapi.json
 | `GET` | `/predictions/recent` | Return recent predictions from SQLite |
 | `GET` | `/model_metrics` | Return metrics from `models/metrics.json` |
 | `POST` | `/retrain` | Run training pipeline and reload the model |
+| `POST` | `/drift/run` | Calculate drift and save JSON report |
+| `GET` | `/drift/latest` | Return latest drift report |
 | `GET` | `/metrics` | Prometheus metrics endpoint |
 | `POST` | `/reset_metrics` | Reset custom Prometheus gauges |
 

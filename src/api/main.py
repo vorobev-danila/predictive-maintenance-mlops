@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Gauge, REGISTRY
+from monitoring.drift import load_latest_drift_report, run_cmapss_drift_report
 from storage.prediction_repository import PredictionRepository
 
 sys.path.insert(
@@ -31,6 +32,18 @@ prediction_repository = None
 
 def get_prediction_db_path():
     return os.getenv("PREDICTION_DB_PATH", "state/predictions.db")
+
+
+def get_reports_dir():
+    return os.getenv("REPORTS_DIR", "reports")
+
+
+def get_drift_reports_dir():
+    return os.path.join(get_reports_dir(), "drift")
+
+
+def get_drift_data_path():
+    return os.getenv("DRIFT_DATA_PATH", "data/raw")
 
 
 @asynccontextmanager
@@ -79,13 +92,37 @@ instrumentator = Instrumentator(
 # Добавляем стандартные метрики
 instrumentator.add().instrument(app).expose(app, endpoint="/metrics")
 
-try:
-    predicted_rul_gauge = Gauge("model_predicted_rul", "Predicted RUL value")
-    actual_rul_gauge = Gauge("model_actual_rul", "Actual Ground Truth RUL")
-except ValueError:
-    # Если Uvicorn перезагрузил код и метрика уже существует, просто берем её из памяти
-    predicted_rul_gauge = REGISTRY._names_to_collectors["model_predicted_rul"]
-    actual_rul_gauge = REGISTRY._names_to_collectors["model_actual_rul"]
+
+def get_or_create_gauge(name, description):
+    try:
+        return Gauge(name, description)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
+
+predicted_rul_gauge = get_or_create_gauge("model_predicted_rul", "Predicted RUL value")
+actual_rul_gauge = get_or_create_gauge("model_actual_rul", "Actual Ground Truth RUL")
+data_drift_score_gauge = get_or_create_gauge(
+    "data_drift_score", "Latest data drift score"
+)
+data_drift_detected_gauge = get_or_create_gauge(
+    "data_drift_detected", "Latest data drift flag"
+)
+target_drift_score_gauge = get_or_create_gauge(
+    "target_drift_score", "Latest target drift score"
+)
+target_drift_detected_gauge = get_or_create_gauge(
+    "target_drift_detected", "Latest target drift flag"
+)
+concept_drift_score_gauge = get_or_create_gauge(
+    "concept_drift_score", "Latest concept drift score"
+)
+concept_drift_detected_gauge = get_or_create_gauge(
+    "concept_drift_detected", "Latest concept drift flag"
+)
+drifted_features_count_gauge = get_or_create_gauge(
+    "drifted_features_count", "Number of features with detected drift"
+)
 
 
 # Middleware для логирования запросов
@@ -171,6 +208,15 @@ class PredictionHistoryItem(BaseModel):
     actual_rul: float | None = None
     anomaly_flag: bool
     model_version: str | None = None
+
+
+class DriftRunRequest(BaseModel):
+    dataset_id: str = Field(default="FD001", description="CMAPSS dataset suffix")
+
+
+class DriftRunResponse(BaseModel):
+    status: str
+    report: dict
 
 
 # Эндпоинт для проверки работоспособности
@@ -306,10 +352,62 @@ async def get_recent_predictions(limit: int = Query(default=20, ge=1, le=100)):
     return prediction_repository.list_recent(limit=limit)
 
 
+@app.post("/drift/run", response_model=DriftRunResponse)
+async def run_drift(request: DriftRunRequest):
+    if model is None or scaler is None or feature_names is None:
+        raise HTTPException(status_code=503, detail="Модель не загружена")
+
+    try:
+        report = run_cmapss_drift_report(
+            data_path=get_drift_data_path(),
+            reports_dir=get_drift_reports_dir(),
+            dataset_id=request.dataset_id,
+            model=model,
+            scaler=scaler,
+            feature_names=feature_names,
+        )
+        update_drift_metrics(report)
+        return DriftRunResponse(status="success", report=report)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        logger.error(f"Ошибка расчета drift: {error}")
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/drift/latest")
+async def get_latest_drift():
+    report = load_latest_drift_report(get_drift_reports_dir())
+    if report is None:
+        raise HTTPException(status_code=404, detail="Drift report not found")
+    return report
+
+
+def update_drift_metrics(report):
+    data_drift = report["data_drift"]
+    target_drift = report["target_drift"]
+    concept_drift = report["concept_drift"]
+
+    data_drift_score_gauge.set(float(data_drift["score"]))
+    data_drift_detected_gauge.set(float(data_drift["drift_detected"]))
+    drifted_features_count_gauge.set(float(data_drift["drifted_features_count"]))
+    target_drift_score_gauge.set(float(target_drift["score"]))
+    target_drift_detected_gauge.set(float(target_drift["drift_detected"]))
+    concept_drift_score_gauge.set(float(concept_drift["score"]))
+    concept_drift_detected_gauge.set(float(concept_drift["drift_detected"]))
+
+
 @app.post("/reset_metrics")
 async def reset_metrics():
     predicted_rul_gauge.set(0.0)
     actual_rul_gauge.set(0.0)
+    data_drift_score_gauge.set(0.0)
+    data_drift_detected_gauge.set(0.0)
+    target_drift_score_gauge.set(0.0)
+    target_drift_detected_gauge.set(0.0)
+    concept_drift_score_gauge.set(0.0)
+    concept_drift_detected_gauge.set(0.0)
+    drifted_features_count_gauge.set(0.0)
     return {"status": "metrics reset to 0"}
 
 

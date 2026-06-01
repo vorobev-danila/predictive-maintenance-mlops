@@ -13,6 +13,12 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio123}
       ENABLE_METRICS: "true"
+      PREDICTION_DB_PATH: /app/state/predictions.db
+      REPORTS_DIR: /app/state/reports
+      DRIFT_DATA_PATH: /app/data/raw
+    volumes:
+      - ./data/raw:/app/data/raw:ro
+      - ./state:/app/state
 
   minio:
     image: minio/minio
