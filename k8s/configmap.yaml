@@ -13,3 +13,4 @@ data:
   PREDICTION_DB_PATH: "/app/state/predictions.db"
   REPORTS_DIR: "/app/state/reports"
   DRIFT_DATA_PATH: "/app/data/raw"
+  PYTHONPATH: "/app/src:/app"
