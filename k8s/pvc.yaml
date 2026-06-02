@@ -1,6 +1,19 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
+  name: api-data-pvc
+  labels:
+    app: predictive-maintenance-api
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
   name: api-state-pvc
   labels:
     app: predictive-maintenance-api
