@@ -45,6 +45,7 @@ src/data/datasets/*.pdf
 
 # Тестирование и покрытие
 .pytest_cache/
+.pytest-tmp/
 .mypy_cache/
 .coverage
 htmlcov/

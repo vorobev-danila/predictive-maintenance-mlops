@@ -33,7 +33,9 @@ def calculate_metrics(y_true, y_pred):
     }
 
 
-def train_gradient_boosting(X_train, y_train, X_val=None, y_val=None, model_params=None):
+def train_gradient_boosting(
+    X_train, y_train, X_val=None, y_val=None, model_params=None
+):
     pipeline = build_model_pipeline(model_params)
     pipeline.fit(X_train, y_train)
 

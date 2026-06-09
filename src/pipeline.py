@@ -100,8 +100,12 @@ def log_training_run(model, metrics, data_path):
             mlflow.log_metrics(numeric_metrics)
             mlflow.log_artifact("models/metrics.json", artifact_path="model_artifacts")
             mlflow.log_artifact("models/features.json", artifact_path="model_artifacts")
-            mlflow.log_artifact("models/official_test_predictions.csv", artifact_path="model_artifacts")
-            mlflow.log_artifact("models/evaluation_summary.csv", artifact_path="model_artifacts")
+            mlflow.log_artifact(
+                "models/official_test_predictions.csv", artifact_path="model_artifacts"
+            )
+            mlflow.log_artifact(
+                "models/evaluation_summary.csv", artifact_path="model_artifacts"
+            )
             mlflow.sklearn.log_model(
                 sk_model=model,
                 artifact_path="model",
@@ -139,7 +143,9 @@ def add_metric_prefix(metrics, prefix):
 
 
 def build_training_metrics(train_df, test_df, official_rul):
-    train_part, validation_part, validation_last = split_train_validation_by_unit(train_df)
+    train_part, validation_part, validation_last = split_train_validation_by_unit(
+        train_df
+    )
 
     diagnostic_model, train_metrics, _ = train_gradient_boosting(
         train_part[RAW_FEATURES],
