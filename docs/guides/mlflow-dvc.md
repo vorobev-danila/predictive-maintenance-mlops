@@ -14,10 +14,11 @@
 The training pipeline logs:
 
 - model parameters;
-- metrics: `train_mae`, `val_mae`, `test_mae`, `train_rmse`, `val_rmse`,
-  `test_rmse`, `train_r2`, `val_r2`, `test_r2`;
-- artifacts: `metrics.json`, `features.json`, `scaler.pkl`;
-- registered sklearn model: `predictive-maintenance-random-forest`.
+- metrics: `train_mae`, `validation_full_mae`, `validation_last_mae`,
+  `official_test_mae`, and matching `rmse`/`r2` values;
+- artifacts: `metrics.json`, `features.json`, `pipeline.pkl`,
+  `official_test_predictions.csv`, `evaluation_summary.csv`;
+- registered sklearn model: `predictive-maintenance-gradient-boosting`.
 
 Run training:
 

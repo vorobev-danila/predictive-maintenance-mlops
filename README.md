@@ -30,7 +30,7 @@ Docker, Kubernetes/Minikube, Prometheus/Grafana и CI/CD в GitHub Actions.
 ## Что внутри
 
 - **Датасет:** NASA CMAPSS, файлы FD001-FD004 в `data/raw`.
-- **Базовая модель:** `RandomForestRegressor` из scikit-learn.
+- **Базовая модель:** `GradientBoostingRegressor` из scikit-learn на raw FD001 features.
 - **API:** FastAPI с OpenAPI-документацией на `/docs`.
 - **Prediction history:** SQLite-backed repository и endpoint `/predictions/recent`.
 - **Трекинг:** MLflow, backend store и артефакты через MinIO.

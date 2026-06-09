@@ -50,15 +50,18 @@ def get_drift_data_path():
 async def lifespan(app: FastAPI):
     global model, scaler, feature_names, prediction_repository
 
-    model_path = "models/random_forest_model.pkl"
-    scaler_path = "models/scaler.pkl"
+    model_path = "models/pipeline.pkl"
+    fallback_model_path = "models/model.pkl"
     features_path = "models/features.json"
     prediction_repository = PredictionRepository(get_prediction_db_path())
     prediction_repository.initialize()
 
     try:
-        model = joblib.load(model_path)
-        scaler = joblib.load(scaler_path)
+        if os.path.exists(model_path):
+            model = joblib.load(model_path)
+        else:
+            model = joblib.load(fallback_model_path)
+        scaler = None
         with open(features_path, "r") as f:
             feature_names = json.load(f)
         print("Модель и артефакты успешно загружены")
@@ -141,6 +144,7 @@ async def log_requests(request, call_next):
 
 # Определяем модель данных для входного запроса
 class SensorData(BaseModel):
+    cycle: float = Field(..., description="Engine cycle")
     sensor1: float = Field(..., description="Полная температура на входе в вентилятор")
     sensor2: float = Field(
         ..., description="Полная температура на выходе компрессора низкого давления"
@@ -222,7 +226,7 @@ class DriftRunResponse(BaseModel):
 # Эндпоинт для проверки работоспособности
 @app.get("/health")
 async def health_check():
-    if model is None or scaler is None:
+    if model is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
     return {"status": "ok"}
 
@@ -298,13 +302,16 @@ async def retrain():
 async def reload_model():
     global model, scaler, feature_names
 
-    model_path = "models/random_forest_model.pkl"
-    scaler_path = "models/scaler.pkl"
+    model_path = "models/pipeline.pkl"
+    fallback_model_path = "models/model.pkl"
     features_path = "models/features.json"
 
     try:
-        model = joblib.load(model_path)
-        scaler = joblib.load(scaler_path)
+        if os.path.exists(model_path):
+            model = joblib.load(model_path)
+        else:
+            model = joblib.load(fallback_model_path)
+        scaler = None
         with open(features_path, "r") as f:
             feature_names = json.load(f)
         logger.info("Модель успешно перезагружена после переобучения")
@@ -315,14 +322,13 @@ async def reload_model():
 # Основной эндпоинт для предсказания
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(data: SensorData):
-    if model is None or scaler is None or prediction_repository is None:
+    if model is None or prediction_repository is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
 
     input_dict = data.model_dump()
     input_df = pd.DataFrame([input_dict])
     input_df = input_df[feature_names]
-    input_scaled = scaler.transform(input_df)
-    prediction = model.predict(input_scaled)[0]
+    prediction = model.predict(input_df)[0]
     predicted_rul_gauge.set(float(prediction))
 
     # проверка на реальный RUL
@@ -335,7 +341,7 @@ async def predict(data: SensorData):
         actual_rul=data.actual_rul,
         anomaly_flag=False,
         model_version=os.getenv(
-            "MLFLOW_REGISTERED_MODEL_NAME", "predictive-maintenance-random-forest"
+            "MLFLOW_REGISTERED_MODEL_NAME", "predictive-maintenance-gradient-boosting"
         ),
     )
 
@@ -354,7 +360,7 @@ async def get_recent_predictions(limit: int = Query(default=20, ge=1, le=100)):
 
 @app.post("/drift/run", response_model=DriftRunResponse)
 async def run_drift(request: DriftRunRequest):
-    if model is None or scaler is None or feature_names is None:
+    if model is None or feature_names is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
 
     try:

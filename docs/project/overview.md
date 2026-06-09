@@ -12,7 +12,7 @@
 
 Predictive Maintenance MLOps прогнозирует остаточный ресурс авиационного
 двигателя в циклах эксплуатации. Задача построена вокруг датасета NASA CMAPSS
-и базовой модели `RandomForestRegressor`.
+и production-модели `GradientBoostingRegressor`.
 
 Проект показывает не только обучение модели, но и полный контур вокруг нее:
 tracking, serving, storage, CI/CD, контейнеризацию и запуск в Kubernetes.
@@ -22,7 +22,7 @@ tracking, serving, storage, CI/CD, контейнеризацию и запус�
 | Area | Implementation |
 | --- | --- |
 | Dataset | NASA CMAPSS, `data/raw` |
-| Model | scikit-learn `RandomForestRegressor` |
+| Model | scikit-learn `GradientBoostingRegressor` |
 | Training | `src/pipeline.py` |
 | Experiment tracking | MLflow |
 | Artifact storage | MinIO bucket `mlflow` |

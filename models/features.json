@@ -1,1 +1,27 @@
-["sensor11", "sensor4", "sensor12", "sensor7", "sensor15", "sensor21", "sensor20", "sensor2", "sensor17", "sensor3", "sensor8", "sensor13", "sensor9", "sensor14", "sensor6", "sensor5", "sensor16", "setting1", "setting2", "setting3"]
+[
+  "cycle",
+  "setting1",
+  "setting2",
+  "setting3",
+  "sensor1",
+  "sensor2",
+  "sensor3",
+  "sensor4",
+  "sensor5",
+  "sensor6",
+  "sensor7",
+  "sensor8",
+  "sensor9",
+  "sensor10",
+  "sensor11",
+  "sensor12",
+  "sensor13",
+  "sensor14",
+  "sensor15",
+  "sensor16",
+  "sensor17",
+  "sensor18",
+  "sensor19",
+  "sensor20",
+  "sensor21"
+]

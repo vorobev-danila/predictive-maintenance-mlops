@@ -3,13 +3,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+from data.data_loader import RAW_FEATURES
 
 CMAPSS_COLUMNS = ["unit", "cycle", "setting1", "setting2", "setting3"] + [
     f"sensor{i}" for i in range(1, 22)
 ]
-FEATURE_COLUMNS = ["setting1", "setting2", "setting3"] + [
-    f"sensor{i}" for i in range(1, 22)
-]
+FEATURE_COLUMNS = RAW_FEATURES
 
 
 def load_cmapss_dataset(data_path="data/raw", dataset_id="FD001"):
@@ -221,19 +220,23 @@ def _calculate_model_concept_drift(
     current_df,
     threshold,
 ):
-    if model is None or scaler is None:
+    if model is None:
         return {
             "drift_detected": False,
             "score": 0.0,
             "threshold": threshold,
             "status": "skipped",
-            "reason": "model or scaler is not available",
+            "reason": "model is not available",
         }
 
     reference_features = reference_df[feature_names]
     current_features = current_df[feature_names]
-    reference_predictions = model.predict(scaler.transform(reference_features))
-    current_predictions = model.predict(scaler.transform(current_features))
+    if scaler is None:
+        reference_predictions = model.predict(reference_features)
+        current_predictions = model.predict(current_features)
+    else:
+        reference_predictions = model.predict(scaler.transform(reference_features))
+        current_predictions = model.predict(scaler.transform(current_features))
     result = calculate_concept_drift(
         reference_predictions=reference_predictions,
         reference_actual=reference_df["RUL"],

@@ -54,6 +54,7 @@ def build_prediction_payload():
     payload = {f"sensor{i}": 1.0 for i in range(1, 22)}
     payload.update(
         {
+            "cycle": 10.0,
             "setting1": 0.0,
             "setting2": 0.0,
             "setting3": 100.0,
@@ -78,8 +79,8 @@ def test_model_metrics_endpoint_returns_saved_metrics():
 
     assert response.status_code == 200
     metrics = response.json()
-    assert "test_mae" in metrics
-    assert "test_r2" in metrics
+    assert "official_test_mae" in metrics
+    assert "official_test_r2" in metrics
 
 
 def test_health_endpoint_loads_model_artifacts(api_client):
@@ -117,7 +118,7 @@ def test_predict_endpoint_persists_prediction_history(api_client):
     assert history[0]["predicted_rul"] == prediction["rul"]
     assert history[0]["actual_rul"] == 12.0
     assert history[0]["anomaly_flag"] is False
-    assert history[0]["model_version"] == "predictive-maintenance-random-forest"
+    assert history[0]["model_version"] == "predictive-maintenance-gradient-boosting"
 
 
 def test_drift_run_creates_latest_report(api_client):
@@ -139,7 +140,9 @@ def test_drift_run_creates_latest_report(api_client):
 
 def test_feature_file_matches_api_payload_fields():
     feature_path = Path("models/features.json")
-    feature_names = set(json.loads(feature_path.read_text()))
+    feature_names = json.loads(feature_path.read_text())
     payload_fields = set(build_prediction_payload())
 
-    assert feature_names.issubset(payload_fields)
+    assert len(feature_names) == 25
+    assert feature_names[:4] == ["cycle", "setting1", "setting2", "setting3"]
+    assert set(feature_names).issubset(payload_fields)
