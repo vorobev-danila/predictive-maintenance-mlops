@@ -28,6 +28,9 @@ data/raw/
 data/processed/
 reports/*.json
 reports/**/*.json
+reports/**/*.csv
+reports/**/*.html
+reports/**/*.png
 state/
 src/data/datasets/*.txt
 src/data/datasets/*.zip

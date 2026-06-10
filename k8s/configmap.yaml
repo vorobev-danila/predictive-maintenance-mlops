@@ -6,7 +6,7 @@ metadata:
     app: predictive-maintenance-api
 data:
   MLFLOW_TRACKING_URI: "http://mlflow:5000"
-  MLFLOW_REGISTERED_MODEL_NAME: "predictive-maintenance-random-forest"
+  MLFLOW_REGISTERED_MODEL_NAME: "predictive-maintenance-gradient-boosting"
   MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
   ENABLE_METRICS: "true"
   APP_STATE_DIR: "/app/state"

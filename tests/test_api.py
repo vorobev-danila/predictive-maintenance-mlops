@@ -138,6 +138,19 @@ def test_drift_run_creates_latest_report(api_client):
     assert "concept_drift" in latest
 
 
+def test_drift_simulation_updates_report(api_client):
+    response = api_client.post(
+        "/drift/simulate",
+        json={"scenario": "data_drift", "dataset_id": "FD001", "windows": 2},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "success"
+    assert body["report"]["scenario"] == "data_drift"
+    assert body["report"]["latest_window"]["data_drift"]["drift_detected"] is True
+
+
 def test_feature_file_matches_api_payload_fields():
     feature_path = Path("models/features.json")
     feature_names = json.loads(feature_path.read_text())

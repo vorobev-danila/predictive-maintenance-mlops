@@ -13,6 +13,7 @@ from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Gauge, REGISTRY
 from monitoring.drift import load_latest_drift_report, run_cmapss_drift_report
+from monitoring.drift_simulation import SUPPORTED_SCENARIOS, run_drift_simulation
 from storage.prediction_repository import PredictionRepository
 
 sys.path.insert(
@@ -96,9 +97,9 @@ instrumentator = Instrumentator(
 instrumentator.add().instrument(app).expose(app, endpoint="/metrics")
 
 
-def get_or_create_gauge(name, description):
+def get_or_create_gauge(name, description, labelnames=None):
     try:
-        return Gauge(name, description)
+        return Gauge(name, description, labelnames or [])
     except ValueError:
         return REGISTRY._names_to_collectors[name]
 
@@ -125,6 +126,26 @@ concept_drift_detected_gauge = get_or_create_gauge(
 )
 drifted_features_count_gauge = get_or_create_gauge(
     "drifted_features_count", "Number of features with detected drift"
+)
+drift_simulation_window_gauge = get_or_create_gauge(
+    "drift_simulation_window", "Latest drift simulation window"
+)
+drift_simulation_scenario_gauge = get_or_create_gauge(
+    "drift_simulation_scenario",
+    "Active drift simulation scenario",
+    ["scenario"],
+)
+model_prediction_error_mae_gauge = get_or_create_gauge(
+    "model_prediction_error_mae", "Latest simulated prediction MAE"
+)
+model_prediction_error_p95_gauge = get_or_create_gauge(
+    "model_prediction_error_p95", "Latest simulated prediction error p95"
+)
+model_actual_rul_mean_gauge = get_or_create_gauge(
+    "model_actual_rul_mean", "Latest simulated actual RUL mean"
+)
+model_predicted_rul_mean_gauge = get_or_create_gauge(
+    "model_predicted_rul_mean", "Latest simulated predicted RUL mean"
 )
 
 
@@ -219,6 +240,18 @@ class DriftRunRequest(BaseModel):
 
 
 class DriftRunResponse(BaseModel):
+    status: str
+    report: dict
+
+
+class DriftSimulationRequest(BaseModel):
+    scenario: str = Field(default="all", description="Drift simulation scenario")
+    dataset_id: str = Field(default="FD001", description="CMAPSS dataset suffix")
+    windows: int = Field(default=6, ge=1, le=30)
+    sleep_seconds: float = Field(default=0.0, ge=0.0, le=10.0)
+
+
+class DriftSimulationResponse(BaseModel):
     status: str
     report: dict
 
@@ -389,6 +422,33 @@ async def get_latest_drift():
     return report
 
 
+@app.post("/drift/simulate", response_model=DriftSimulationResponse)
+async def simulate_drift(request: DriftSimulationRequest):
+    if model is None or feature_names is None:
+        raise HTTPException(status_code=503, detail="Модель не загружена")
+    if request.scenario not in SUPPORTED_SCENARIOS:
+        raise HTTPException(status_code=400, detail="Unsupported simulation scenario")
+
+    try:
+        report = run_drift_simulation(
+            scenario=request.scenario,
+            data_path=get_drift_data_path(),
+            reports_dir=get_drift_reports_dir(),
+            dataset_id=request.dataset_id,
+            model=model,
+            feature_names=feature_names,
+            windows=request.windows,
+            sleep_seconds=request.sleep_seconds,
+            on_window=update_drift_simulation_metrics,
+        )
+        return DriftSimulationResponse(status="success", report=report)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+    except Exception as error:
+        logger.error(f"Ошибка drift simulation: {error}")
+        raise HTTPException(status_code=500, detail=str(error))
+
+
 def update_drift_metrics(report):
     data_drift = report["data_drift"]
     target_drift = report["target_drift"]
@@ -403,6 +463,22 @@ def update_drift_metrics(report):
     concept_drift_detected_gauge.set(float(concept_drift["drift_detected"]))
 
 
+def update_drift_simulation_metrics(window_result):
+    update_drift_metrics(window_result)
+    scenario = window_result["scenario"]
+
+    for scenario_name in SUPPORTED_SCENARIOS:
+        drift_simulation_scenario_gauge.labels(scenario=scenario_name).set(
+            float(scenario_name == scenario)
+        )
+
+    drift_simulation_window_gauge.set(float(window_result["window"]))
+    model_prediction_error_mae_gauge.set(float(window_result["prediction_error_mae"]))
+    model_prediction_error_p95_gauge.set(float(window_result["prediction_error_p95"]))
+    model_actual_rul_mean_gauge.set(float(window_result["actual_rul_mean"]))
+    model_predicted_rul_mean_gauge.set(float(window_result["predicted_rul_mean"]))
+
+
 @app.post("/reset_metrics")
 async def reset_metrics():
     predicted_rul_gauge.set(0.0)
@@ -414,6 +490,13 @@ async def reset_metrics():
     concept_drift_score_gauge.set(0.0)
     concept_drift_detected_gauge.set(0.0)
     drifted_features_count_gauge.set(0.0)
+    drift_simulation_window_gauge.set(0.0)
+    for scenario_name in SUPPORTED_SCENARIOS:
+        drift_simulation_scenario_gauge.labels(scenario=scenario_name).set(0.0)
+    model_prediction_error_mae_gauge.set(0.0)
+    model_prediction_error_p95_gauge.set(0.0)
+    model_actual_rul_mean_gauge.set(0.0)
+    model_predicted_rul_mean_gauge.set(0.0)
     return {"status": "metrics reset to 0"}
 
 
