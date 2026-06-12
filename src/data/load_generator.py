@@ -1,66 +1,77 @@
-import pandas as pd
-import requests
+import argparse
+import json
 import time
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
-print("Загрузка датасетов...")
-test_df = pd.read_csv("data/raw/test_FD001.txt", sep=r"\s+", header=None)
-rul_df = pd.read_csv("data/raw/RUL_FD001.txt", sep=r"\s+", header=None)
+from data.data_loader import iter_official_test_rows, iter_train_rows
 
-max_cycles = test_df.groupby(0)[1].max()
 
-print("Запуск имитации (Двигатель 1)...")
-engine_1_data = test_df[test_df[0] == 1]
-
-for index, row in engine_1_data.iterrows():
-    engine_id = int(row[0])
-    cycle = int(row[1])
-
-    final_rul = rul_df.iloc[engine_id - 1, 0]
-    max_cycle = max_cycles[engine_id]
-    current_actual_rul = final_rul + (
-        max_cycle - cycle
-    )  # реальный RUL на текущем цикле
-
-    payload = {
-        f"sensor{i+1}": float(row[i + 5]) for i in range(21)
-    }  # создаем словарь с 21 ключом
-    payload.update(
-        {
-            "setting1": float(row[2]),
-            "setting2": float(row[3]),
-            "setting3": float(row[4]),
-            "actual_rul": float(current_actual_rul),
-        }
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Send real CMAPSS official test rows to the prediction API."
     )
+    parser.add_argument("--api-url", default="http://127.0.0.1:8080")
+    parser.add_argument("--data-path", default="data/raw")
+    parser.add_argument("--dataset-id", default="FD001")
+    parser.add_argument("--split", choices=["test", "train"], default="test")
+    parser.add_argument("--unit-id", type=int, default=1)
+    parser.add_argument("--delay", type=float, default=7.0)
+    parser.add_argument("--loop", action="store_true")
+    return parser.parse_args()
 
-    # Отправка запроса
-    try:
-        response = requests.post(
-            "http://localhost:8080/predict", json=payload
-        )  # отправляем POST запрос
-        predicted = response.json()["rul"]
-        error = abs(predicted - current_actual_rul)
-        print(
-            f"Цикл {cycle} | "
-            f"Предсказано: {predicted:.1f} | "
-            f"Реально: {current_actual_rul} | "
-            f"Ошибка: {error:.1f}"
+
+def post_prediction(api_url, payload):
+    body = json.dumps(payload).encode("utf-8")
+    request = Request(
+        f"{api_url.rstrip('/')}/predict",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urlopen(request, timeout=30) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def stream_predictions(args):
+    while True:
+        rows_sent = 0
+        row_iterator = (
+            iter_train_rows if args.split == "train" else iter_official_test_rows
         )
-    except Exception as e:
-        print(f"Ошибка: {e}")
+        rows = row_iterator(
+            data_path=args.data_path, dataset_id=args.dataset_id, unit_id=args.unit_id
+        )
+        for payload in rows:
+            result = post_prediction(args.api_url, payload)
+            predicted_rul = float(result["rul"])
+            actual_rul = float(payload["actual_rul"])
+            error = abs(predicted_rul - actual_rul)
+            rows_sent += 1
+            print(
+                f"{args.dataset_id} split={args.split} unit={args.unit_id} "
+                f"cycle={payload['cycle']:.0f} "
+                f"predicted={predicted_rul:.2f} "
+                f"actual={actual_rul:.2f} "
+                f"absolute_error={error:.2f}"
+            )
+            time.sleep(args.delay)
 
-    time.sleep(15)
+        if rows_sent == 0:
+            raise ValueError(
+                f"No rows found for dataset_id={args.dataset_id}, unit_id={args.unit_id}"
+            )
+        if not args.loop:
+            break
 
-# Сброс метрик после завершения всех циклов
-print("Имитация завершена. Отправка сигнала сброса метрик...")
-reset_payload = {f"sensor{i+1}": 0.0 for i in range(21)}
-reset_payload.update(
-    {"setting1": 0.0, "setting2": 0.0, "setting3": 0.0, "actual_rul": 0.0}
-)
 
-print("Имитация завершена. Сброс метрик...")
-try:
-    requests.post("http://localhost:8080/reset_metrics", timeout=2)
-    print("Метрики сброшены до 0")
-except Exception as e:
-    print(f"Ошибка сброса: {e}")
+def main():
+    args = parse_args()
+    try:
+        stream_predictions(args)
+    except (URLError, TimeoutError) as error:
+        raise SystemExit(f"Prediction API is unavailable: {error}") from error
+
+
+if __name__ == "__main__":
+    main()

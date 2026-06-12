@@ -1,6 +1,7 @@
 import pandas as pd
 
 from monitoring.drift import (
+    MAX_DISPLAY_DRIFT_SCORE,
     add_test_rul,
     add_train_rul,
     calculate_concept_drift,
@@ -51,6 +52,40 @@ def test_calculate_data_and_target_drift_detects_shift():
     assert data_drift["drifted_features"] == ["sensor1"]
     assert data_drift["features"]["sensor2"]["status"] == "skipped"
     assert target_drift["drift_detected"] is True
+
+
+def test_constant_feature_shift_uses_bounded_drift_score():
+    reference = pd.DataFrame({"sensor1": [1.0, 1.0, 1.0, 1.0]})
+    current = pd.DataFrame({"sensor1": [2.0, 2.0, 2.0, 2.0]})
+
+    data_drift = calculate_data_drift(
+        reference,
+        current,
+        columns=["sensor1"],
+        threshold=0.3,
+    )
+
+    assert data_drift["drift_detected"] is True
+    assert data_drift["score"] == MAX_DISPLAY_DRIFT_SCORE
+    assert data_drift["features"]["sensor1"]["score"] == MAX_DISPLAY_DRIFT_SCORE
+
+
+def test_constant_feature_ignores_float_noise():
+    reference = pd.DataFrame({"sensor10": [1.3, 1.3, 1.3, 1.3]})
+    current = pd.DataFrame(
+        {"sensor10": [1.2999999999999996, 1.2999999999999996]}
+    )
+
+    data_drift = calculate_data_drift(
+        reference,
+        current,
+        columns=["sensor10"],
+        threshold=0.3,
+    )
+
+    assert data_drift["drift_detected"] is False
+    assert data_drift["score"] == 0.0
+    assert data_drift["features"]["sensor10"]["status"] == "skipped"
 
 
 def test_calculate_concept_drift_detects_error_growth():

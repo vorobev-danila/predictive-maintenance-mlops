@@ -11,8 +11,11 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
-from prometheus_client import Gauge, REGISTRY
-from monitoring.drift import load_latest_drift_report, run_cmapss_drift_report
+from prometheus_client import Counter, Gauge, REGISTRY
+from monitoring.drift import (
+    load_latest_drift_report,
+    run_prediction_window_drift_report,
+)
 from storage.prediction_repository import PredictionRepository
 
 sys.path.insert(
@@ -44,6 +47,24 @@ def get_drift_reports_dir():
 
 def get_drift_data_path():
     return os.getenv("DRIFT_DATA_PATH", "data/raw")
+
+
+def get_drift_window_size():
+    return int(os.getenv("DRIFT_WINDOW_SIZE", "30"))
+
+
+def get_drift_min_window_size():
+    return int(os.getenv("DRIFT_MIN_WINDOW_SIZE", "5"))
+
+
+def get_reference_mae():
+    metrics_path = "models/metrics.json"
+    try:
+        with open(metrics_path, "r") as file:
+            metrics = json.load(file)
+        return metrics.get("official_test_mae")
+    except FileNotFoundError:
+        return None
 
 
 @asynccontextmanager
@@ -103,8 +124,32 @@ def get_or_create_gauge(name, description):
         return REGISTRY._names_to_collectors[name]
 
 
+def get_or_create_labeled_gauge(name, description, labelnames):
+    try:
+        return Gauge(name, description, labelnames)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
+
+def get_or_create_counter(name, description):
+    try:
+        return Counter(name, description)
+    except ValueError:
+        return REGISTRY._names_to_collectors[name]
+
+
 predicted_rul_gauge = get_or_create_gauge("model_predicted_rul", "Predicted RUL value")
 actual_rul_gauge = get_or_create_gauge("model_actual_rul", "Actual Ground Truth RUL")
+prediction_error_gauge = get_or_create_gauge(
+    "model_prediction_error",
+    "Latest signed prediction error: predicted RUL - actual RUL",
+)
+absolute_error_gauge = get_or_create_gauge(
+    "model_absolute_error", "Latest absolute prediction error"
+)
+prediction_count_counter = get_or_create_counter(
+    "model_predictions_total", "Total number of prediction requests"
+)
 data_drift_score_gauge = get_or_create_gauge(
     "data_drift_score", "Latest data drift score"
 )
@@ -125,6 +170,42 @@ concept_drift_detected_gauge = get_or_create_gauge(
 )
 drifted_features_count_gauge = get_or_create_gauge(
     "drifted_features_count", "Number of features with detected drift"
+)
+prediction_window_predicted_rul_mean_gauge = get_or_create_gauge(
+    "prediction_window_predicted_rul_mean",
+    "Mean predicted RUL in the latest prediction drift window",
+)
+prediction_window_actual_rul_mean_gauge = get_or_create_gauge(
+    "prediction_window_actual_rul_mean",
+    "Mean actual RUL in the latest labeled prediction drift window",
+)
+prediction_window_absolute_error_mae_gauge = get_or_create_gauge(
+    "prediction_window_absolute_error_mae",
+    "Mean absolute error in the latest labeled prediction drift window",
+)
+prediction_window_absolute_error_p95_gauge = get_or_create_gauge(
+    "prediction_window_absolute_error_p95",
+    "95th percentile absolute error in the latest labeled prediction drift window",
+)
+feature_drift_score_gauge = get_or_create_labeled_gauge(
+    "feature_drift_score",
+    "Latest drift score by feature",
+    ["feature"],
+)
+feature_drift_detected_gauge = get_or_create_labeled_gauge(
+    "feature_drift_detected",
+    "Latest drift flag by feature",
+    ["feature"],
+)
+feature_reference_mean_gauge = get_or_create_labeled_gauge(
+    "feature_reference_mean",
+    "Reference dataset mean by feature in the latest drift report",
+    ["feature"],
+)
+feature_current_mean_gauge = get_or_create_labeled_gauge(
+    "feature_current_mean",
+    "Current dataset mean by feature in the latest drift report",
+    ["feature"],
 )
 
 
@@ -321,7 +402,7 @@ async def reload_model():
 
 # Основной эндпоинт для предсказания
 @app.post("/predict", response_model=PredictionResponse)
-async def predict(data: SensorData):
+def predict(data: SensorData):
     if model is None or prediction_repository is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
 
@@ -330,10 +411,14 @@ async def predict(data: SensorData):
     input_df = input_df[feature_names]
     prediction = model.predict(input_df)[0]
     predicted_rul_gauge.set(float(prediction))
+    prediction_count_counter.inc()
 
     # проверка на реальный RUL
     if data.actual_rul is not None:
         actual_rul_gauge.set(float(data.actual_rul))
+        prediction_error = float(prediction) - float(data.actual_rul)
+        prediction_error_gauge.set(prediction_error)
+        absolute_error_gauge.set(abs(prediction_error))
 
     saved_prediction = prediction_repository.create_prediction(
         input_payload=input_dict,
@@ -351,7 +436,7 @@ async def predict(data: SensorData):
 
 
 @app.get("/predictions/recent", response_model=list[PredictionHistoryItem])
-async def get_recent_predictions(limit: int = Query(default=20, ge=1, le=100)):
+def get_recent_predictions(limit: int = Query(default=20, ge=1, le=100)):
     if prediction_repository is None:
         raise HTTPException(status_code=503, detail="Prediction storage is not ready")
 
@@ -359,18 +444,22 @@ async def get_recent_predictions(limit: int = Query(default=20, ge=1, le=100)):
 
 
 @app.post("/drift/run", response_model=DriftRunResponse)
-async def run_drift(request: DriftRunRequest):
-    if model is None or feature_names is None:
+def run_drift(request: DriftRunRequest):
+    if model is None or feature_names is None or prediction_repository is None:
         raise HTTPException(status_code=503, detail="Модель не загружена")
 
     try:
-        report = run_cmapss_drift_report(
+        window_size = get_drift_window_size()
+        predictions = prediction_repository.list_recent_for_drift(limit=window_size)
+        report = run_prediction_window_drift_report(
+            predictions=predictions,
             data_path=get_drift_data_path(),
             reports_dir=get_drift_reports_dir(),
             dataset_id=request.dataset_id,
-            model=model,
-            scaler=scaler,
             feature_names=feature_names,
+            reference_mae=get_reference_mae(),
+            window_size=window_size,
+            min_window_size=get_drift_min_window_size(),
         )
         update_drift_metrics(report)
         return DriftRunResponse(status="success", report=report)
@@ -382,7 +471,7 @@ async def run_drift(request: DriftRunRequest):
 
 
 @app.get("/drift/latest")
-async def get_latest_drift():
+def get_latest_drift():
     report = load_latest_drift_report(get_drift_reports_dir())
     if report is None:
         raise HTTPException(status_code=404, detail="Drift report not found")
@@ -401,12 +490,56 @@ def update_drift_metrics(report):
     target_drift_detected_gauge.set(float(target_drift["drift_detected"]))
     concept_drift_score_gauge.set(float(concept_drift["score"]))
     concept_drift_detected_gauge.set(float(concept_drift["drift_detected"]))
+    update_prediction_window_summary_metrics(report.get("prediction_summary", {}))
+    update_feature_drift_metrics(data_drift)
+
+
+def update_prediction_window_summary_metrics(summary):
+    _set_optional_gauge(
+        prediction_window_predicted_rul_mean_gauge,
+        summary.get("predicted_rul_mean"),
+    )
+    _set_optional_gauge(
+        prediction_window_actual_rul_mean_gauge,
+        summary.get("actual_rul_mean"),
+    )
+    _set_optional_gauge(
+        prediction_window_absolute_error_mae_gauge,
+        summary.get("absolute_error_mae"),
+    )
+    _set_optional_gauge(
+        prediction_window_absolute_error_p95_gauge,
+        summary.get("absolute_error_p95"),
+    )
+
+
+def _set_optional_gauge(gauge, value):
+    if value is not None:
+        gauge.set(float(value))
+
+
+def update_feature_drift_metrics(data_drift):
+    for feature_name, feature_result in data_drift.get("features", {}).items():
+        feature_drift_score_gauge.labels(feature=feature_name).set(
+            float(feature_result["score"])
+        )
+        feature_drift_detected_gauge.labels(feature=feature_name).set(
+            float(feature_result["drifted"])
+        )
+        feature_reference_mean_gauge.labels(feature=feature_name).set(
+            float(feature_result["reference_mean"])
+        )
+        feature_current_mean_gauge.labels(feature=feature_name).set(
+            float(feature_result["current_mean"])
+        )
 
 
 @app.post("/reset_metrics")
-async def reset_metrics():
+def reset_metrics():
     predicted_rul_gauge.set(0.0)
     actual_rul_gauge.set(0.0)
+    prediction_error_gauge.set(0.0)
+    absolute_error_gauge.set(0.0)
     data_drift_score_gauge.set(0.0)
     data_drift_detected_gauge.set(0.0)
     target_drift_score_gauge.set(0.0)
@@ -414,6 +547,10 @@ async def reset_metrics():
     concept_drift_score_gauge.set(0.0)
     concept_drift_detected_gauge.set(0.0)
     drifted_features_count_gauge.set(0.0)
+    prediction_window_predicted_rul_mean_gauge.set(0.0)
+    prediction_window_actual_rul_mean_gauge.set(0.0)
+    prediction_window_absolute_error_mae_gauge.set(0.0)
+    prediction_window_absolute_error_p95_gauge.set(0.0)
     return {"status": "metrics reset to 0"}
 
 

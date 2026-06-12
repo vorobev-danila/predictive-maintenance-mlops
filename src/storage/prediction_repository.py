@@ -65,6 +65,13 @@ class PredictionRepository:
 
     def list_recent(self, limit=20):
         bounded_limit = max(1, min(int(limit), 100))
+        return self._list_recent_bounded(bounded_limit)
+
+    def list_recent_for_drift(self, limit=100):
+        bounded_limit = max(1, min(int(limit), 1000))
+        return self._list_recent_bounded(bounded_limit)
+
+    def _list_recent_bounded(self, bounded_limit):
         with self._connect() as connection:
             rows = connection.execute(
                 """

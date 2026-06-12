@@ -42,3 +42,17 @@ def test_prediction_repository_bounds_recent_limit(tmp_path):
 
     assert len(repository.list_recent(limit=0)) == 1
     assert len(repository.list_recent(limit=200)) == 3
+
+
+def test_prediction_repository_lists_larger_drift_window(tmp_path):
+    repository = PredictionRepository(tmp_path / "predictions.db")
+    repository.initialize()
+
+    for index in range(120):
+        repository.create_prediction(
+            input_payload={"sensor1": float(index)},
+            predicted_rul=float(index),
+        )
+
+    assert len(repository.list_recent(limit=200)) == 100
+    assert len(repository.list_recent_for_drift(limit=120)) == 120
