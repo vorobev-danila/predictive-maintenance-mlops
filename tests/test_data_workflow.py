@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pandas as pd
+
 from data.data_loader import (
     RAW_FEATURES,
     get_official_test_last_rows,
@@ -7,6 +9,10 @@ from data.data_loader import (
     iter_train_rows,
     load_and_prepare_data,
     load_official_test_with_rul,
+)
+from data.drift_simulation_stream import (
+    build_simulated_window,
+    calculate_window_intensity,
 )
 
 
@@ -100,3 +106,75 @@ def test_iter_train_rows_uses_train_rul_targets(tmp_path):
     assert [payload["cycle"] for payload in payloads] == [1.0, 2.0, 3.0]
     assert [payload["actual_rul"] for payload in payloads] == [2.0, 1.0, 0.0]
     assert set(RAW_FEATURES).issubset(payloads[0])
+
+
+def test_drift_simulation_intensity_reaches_one_on_last_window():
+    intensities = [
+        round(calculate_window_intensity(window_index, total_windows=7), 2)
+        for window_index in range(1, 8)
+    ]
+
+    assert intensities == [0.0, 0.17, 0.33, 0.5, 0.67, 0.83, 1.0]
+    assert calculate_window_intensity(window_index=1, total_windows=1) == 0.0
+
+
+def test_concept_simulation_is_applied_inside_selected_window():
+    rows = []
+    for cycle in range(1, 7):
+        row = make_cmapss_row(unit=1, cycle=cycle)
+        rows.append(row)
+    clean_train = pd.DataFrame(
+        rows,
+        columns=[
+            "unit",
+            "cycle",
+            "setting1",
+            "setting2",
+            "setting3",
+            *[f"sensor{i}" for i in range(1, 22)],
+        ],
+    )
+    clean_train["RUL"] = [5.0, 4.0, 3.0, 2.0, 1.0, 0.0]
+    clean_window = clean_train.iloc[0:4].reset_index(drop=True)
+
+    simulated = build_simulated_window(
+        clean_train,
+        scenario="concept_drift",
+        intensity=1.0,
+        window_index=1,
+        window_size=4,
+        random_state=43,
+    ).reset_index(drop=True)
+
+    assert simulated[RAW_FEATURES].equals(clean_window[RAW_FEATURES])
+    assert simulated["RUL"].mean() == clean_window["RUL"].mean()
+    assert sorted(simulated["RUL"].tolist()) == sorted(clean_window["RUL"].tolist())
+    assert simulated["RUL"].tolist() != clean_window["RUL"].tolist()
+
+
+def test_drift_simulation_start_row_offsets_first_window():
+    rows = [make_cmapss_row(unit=1, cycle=cycle) for cycle in range(1, 7)]
+    clean_train = pd.DataFrame(
+        rows,
+        columns=[
+            "unit",
+            "cycle",
+            "setting1",
+            "setting2",
+            "setting3",
+            *[f"sensor{i}" for i in range(1, 22)],
+        ],
+    )
+    clean_train["RUL"] = [5.0, 4.0, 3.0, 2.0, 1.0, 0.0]
+
+    simulated = build_simulated_window(
+        clean_train,
+        scenario="data_drift",
+        intensity=0.0,
+        window_index=1,
+        window_size=2,
+        random_state=43,
+        start_row=2,
+    ).reset_index(drop=True)
+
+    assert simulated["cycle"].tolist() == [3, 4]

@@ -11,14 +11,22 @@ def parse_args():
     )
     parser.add_argument("--api-url", default="http://127.0.0.1:8080")
     parser.add_argument("--dataset-id", default="FD001")
+    parser.add_argument("--scenario", default="all")
+    parser.add_argument("--intensity", type=float, default=0.0)
     parser.add_argument("--interval", type=float, default=60.0)
     parser.add_argument("--retry-interval", type=float, default=5.0)
     parser.add_argument("--once", action="store_true")
     return parser.parse_args()
 
 
-def run_drift(api_url, dataset_id):
-    body = json.dumps({"dataset_id": dataset_id}).encode("utf-8")
+def run_drift(api_url, dataset_id, scenario, intensity):
+    body = json.dumps(
+        {
+            "dataset_id": dataset_id,
+            "scenario": scenario,
+            "intensity": intensity,
+        }
+    ).encode("utf-8")
     request = Request(
         f"{api_url.rstrip('/')}/drift/run",
         data=body,
@@ -34,11 +42,18 @@ def main():
     while True:
         sleep_seconds = args.interval
         try:
-            result = run_drift(args.api_url, args.dataset_id)
+            result = run_drift(
+                args.api_url,
+                args.dataset_id,
+                args.scenario,
+                args.intensity,
+            )
             report = result["report"]
             print(
                 "drift_run "
                 f"status={result['status']} "
+                f"scenario={report.get('scenario')} "
+                f"intensity={report.get('intensity')} "
                 f"data_score={report['data_drift']['score']:.4f} "
                 f"target_score={report['target_drift']['score']:.4f} "
                 f"concept_score={report['concept_drift']['score']:.4f}",

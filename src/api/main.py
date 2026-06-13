@@ -7,15 +7,21 @@ import pandas as pd
 import json
 import subprocess
 import logging
+from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 from contextlib import asynccontextmanager
 from prometheus_fastapi_instrumentator import Instrumentator
 from prometheus_client import Counter, Gauge, REGISTRY
+from data.data_loader import RAW_FEATURES
 from monitoring.drift import (
+    get_colleague_thresholds,
+    load_train_dataset,
     load_latest_drift_report,
     run_prediction_window_drift_report,
+    save_drift_report,
 )
+from monitoring.drift_simulation import MAX_SIMULATION_INTENSITY
 from storage.prediction_repository import PredictionRepository
 
 sys.path.insert(
@@ -50,7 +56,7 @@ def get_drift_data_path():
 
 
 def get_drift_window_size():
-    return int(os.getenv("DRIFT_WINDOW_SIZE", "30"))
+    return int(os.getenv("DRIFT_WINDOW_SIZE", "10"))
 
 
 def get_drift_min_window_size():
@@ -225,6 +231,7 @@ async def log_requests(request, call_next):
 
 # Определяем модель данных для входного запроса
 class SensorData(BaseModel):
+    unit: float | None = Field(default=None, description="Engine unit identifier")
     cycle: float = Field(..., description="Engine cycle")
     sensor1: float = Field(..., description="Полная температура на входе в вентилятор")
     sensor2: float = Field(
@@ -297,6 +304,13 @@ class PredictionHistoryItem(BaseModel):
 
 class DriftRunRequest(BaseModel):
     dataset_id: str = Field(default="FD001", description="CMAPSS dataset suffix")
+    scenario: str = Field(default="all", description="Drift simulation scenario")
+    intensity: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=MAX_SIMULATION_INTENSITY,
+        description=f"Simulation intensity from 0.0 to {MAX_SIMULATION_INTENSITY}",
+    )
 
 
 class DriftRunResponse(BaseModel):
@@ -305,6 +319,12 @@ class DriftRunResponse(BaseModel):
 
 
 # Эндпоинт для проверки работоспособности
+class RandomSampleResponse(BaseModel):
+    dataset_id: str
+    source: str
+    payload: dict
+
+
 @app.get("/health")
 async def health_check():
     if model is None:
@@ -407,7 +427,8 @@ def predict(data: SensorData):
         raise HTTPException(status_code=503, detail="Модель не загружена")
 
     input_dict = data.model_dump()
-    input_df = pd.DataFrame([input_dict])
+    model_input = {feature: input_dict[feature] for feature in feature_names}
+    input_df = pd.DataFrame([model_input])
     input_df = input_df[feature_names]
     prediction = model.predict(input_df)[0]
     predicted_rul_gauge.set(float(prediction))
@@ -443,6 +464,24 @@ def get_recent_predictions(limit: int = Query(default=20, ge=1, le=100)):
     return prediction_repository.list_recent(limit=limit)
 
 
+@app.get("/samples/random", response_model=RandomSampleResponse)
+def get_random_train_sample(dataset_id: str = "FD001"):
+    try:
+        train_df = load_train_dataset(get_drift_data_path(), dataset_id)
+    except FileNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error))
+
+    sample = train_df.sample(n=1).iloc[0]
+    payload = {feature: float(sample[feature]) for feature in RAW_FEATURES}
+    payload["unit"] = float(sample["unit"])
+    payload["actual_rul"] = float(sample["RUL"])
+    return {
+        "dataset_id": dataset_id,
+        "source": f"train_{dataset_id}",
+        "payload": payload,
+    }
+
+
 @app.post("/drift/run", response_model=DriftRunResponse)
 def run_drift(request: DriftRunRequest):
     if model is None or feature_names is None or prediction_repository is None:
@@ -450,17 +489,30 @@ def run_drift(request: DriftRunRequest):
 
     try:
         window_size = get_drift_window_size()
-        predictions = prediction_repository.list_recent_for_drift(limit=window_size)
+        thresholds = get_colleague_thresholds()
+        recent_predictions = prediction_repository.list_recent(limit=window_size)
         report = run_prediction_window_drift_report(
-            predictions=predictions,
+            predictions=recent_predictions,
             data_path=get_drift_data_path(),
             reports_dir=get_drift_reports_dir(),
             dataset_id=request.dataset_id,
             feature_names=feature_names,
             reference_mae=get_reference_mae(),
+            model=model,
             window_size=window_size,
             min_window_size=get_drift_min_window_size(),
+            data_drift_threshold=thresholds["data_drift"],
+            target_drift_threshold=thresholds["target_drift"],
+            concept_drift_threshold=thresholds["concept_drift"],
+            threshold_source=thresholds["threshold_source"],
         )
+        report["scenario"] = request.scenario
+        report["intensity"] = request.intensity
+        report["current_dataset"] = (
+            f"simulated_{request.dataset_id}_window_last_"
+            f"{report['prediction_summary']['window_rows']}"
+        )
+        save_drift_report(report, get_drift_reports_dir())
         update_drift_metrics(report)
         return DriftRunResponse(status="success", report=report)
     except FileNotFoundError as error:
@@ -476,6 +528,36 @@ def get_latest_drift():
     if report is None:
         raise HTTPException(status_code=404, detail="Drift report not found")
     return report
+
+
+@app.get("/drift/reports")
+def get_drift_reports(limit: int = Query(default=10, ge=1, le=50)):
+    reports_dir = get_drift_reports_dir()
+    report_paths = sorted(
+        Path(reports_dir).glob("*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )[:limit]
+    reports = []
+    for report_path in report_paths:
+        try:
+            with open(report_path, "r") as file:
+                report = json.load(file)
+        except (OSError, json.JSONDecodeError):
+            continue
+        reports.append(
+            {
+                "file": report_path.name,
+                "created_at": report.get("created_at"),
+                "reference_dataset": report.get("reference_dataset"),
+                "current_dataset": report.get("current_dataset"),
+                "data_drift": report.get("data_drift", {}).get("drift_detected"),
+                "target_drift": report.get("target_drift", {}).get("drift_detected"),
+                "concept_drift": report.get("concept_drift", {}).get("drift_detected"),
+                "report": report,
+            }
+        )
+    return reports
 
 
 def update_drift_metrics(report):

@@ -8,16 +8,23 @@
 - [API endpoints](#api-endpoints)
 - [Report format](#report-format)
 - [Prometheus metrics](#prometheus-metrics)
+- [Prometheus alerts](#prometheus-alerts)
+- [Streamlit UI alerts](#streamlit-ui-alerts)
 - [Runtime paths](#runtime-paths)
 
 ## Drift Workflow
 
-The project compares a reference CMAPSS dataset with a current CMAPSS dataset:
+The current demo drift workflow compares clean FD001 train data with the latest
+simulated FD001 prediction window received through `/predict`:
 
 ```text
-reference = train_FD001
-current   = test_FD001
+reference = clean train_FD001 rows matching current unit/cycle
+current   = simulated_FD001_window_last_N
 ```
+
+By default, `N` is controlled by `DRIFT_WINDOW_SIZE=10`. This keeps Grafana and
+Prometheus focused on the recent incoming stream instead of recalculating drift
+over the full simulated dataset.
 
 The drift module calculates:
 
@@ -45,6 +52,12 @@ Read latest report:
 
 ```bash
 curl http://localhost:8080/drift/latest
+```
+
+Read saved drift reports:
+
+```bash
+curl http://localhost:8080/drift/reports?limit=10
 ```
 
 ## Report Format
@@ -88,6 +101,46 @@ Prometheus reads them from:
 
 ```text
 http://localhost:8080/metrics
+```
+
+## Prometheus Alerts
+
+Prometheus loads drift alerting rules from:
+
+```text
+prometheus_alert_rules.yml
+```
+
+Configured alerts:
+
+| Alert | Expression |
+| --- | --- |
+| `DataDriftDetected` | `data_drift_detected == 1` |
+| `TargetDriftDetected` | `target_drift_detected == 1` |
+| `ConceptDriftDetected` | `concept_drift_detected == 1` |
+| `AnyDriftDetected` | any drift flag is active |
+
+Check active alerts:
+
+```bash
+curl http://localhost:9090/api/v1/alerts
+```
+
+## Streamlit UI Alerts
+
+The Streamlit UI displays real Prometheus alerts from:
+
+```text
+http://prometheus:9090/api/v1/alerts
+```
+
+Detailed drift flags and scores are still available in Grafana panels and in
+the latest JSON report from `/drift/latest`.
+
+Open the UI locally:
+
+```text
+http://localhost:8501
 ```
 
 ## Runtime Paths

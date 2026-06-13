@@ -4,6 +4,11 @@ from pathlib import Path
 
 import pandas as pd
 from data.data_loader import RAW_FEATURES, get_official_test_last_rows
+from monitoring.drift_simulation import (
+    MAX_SIMULATION_INTENSITY,
+    apply_simulation_scenario,
+    focus_result_on_scenario,
+)
 
 CMAPSS_COLUMNS = ["unit", "cycle", "setting1", "setting2", "setting3"] + [
     f"sensor{i}" for i in range(1, 22)
@@ -19,6 +24,14 @@ CONCEPT_DRIFT_REFERENCE_DATASET = "FD001"
 CONCEPT_DRIFT_CURRENT_DATASET = "FD003"
 WINDOW_REFERENCE_DATASET = "FD001"
 DEFAULT_MIN_WINDOW_SIZE = 5
+DEFAULT_DATA_THRESHOLD_QUANTILE = 0.95
+DEFAULT_TARGET_THRESHOLD_QUANTILE = 0.85
+DEFAULT_CONCEPT_THRESHOLD_QUANTILE = 0.95
+DEFAULT_THRESHOLD_WINDOW_SIZE = 10
+COLLEAGUE_DATA_DRIFT_THRESHOLD = 0.3
+COLLEAGUE_TARGET_DRIFT_THRESHOLD = 0.3
+COLLEAGUE_CONCEPT_DRIFT_THRESHOLD = 0.3
+_THRESHOLD_CACHE = {}
 
 
 def load_cmapss_dataset(data_path="data/raw", dataset_id="FD001"):
@@ -107,7 +120,7 @@ def calculate_concept_drift(
     reference_actual,
     current_predictions,
     current_actual,
-    threshold=0.25,
+    threshold=0.3,
 ):
     reference_mae = _mean_absolute_error(reference_predictions, reference_actual)
     current_mae = _mean_absolute_error(current_predictions, current_actual)
@@ -135,7 +148,7 @@ def run_cmapss_drift_report(
     feature_names=None,
     data_drift_threshold=0.3,
     target_drift_threshold=0.3,
-    concept_drift_threshold=0.25,
+    concept_drift_threshold=0.3,
 ):
     # The monitoring datasets are intentionally split by drift type:
     # FD002 has different operating conditions, making it a clearer feature/data
@@ -190,6 +203,254 @@ def run_cmapss_drift_report(
     return save_drift_report(report, reports_dir)
 
 
+def run_simulated_test_drift_report(
+    data_path="data/raw",
+    reports_dir="reports/drift",
+    dataset_id="FD001",
+    model=None,
+    feature_names=None,
+    scenario="all",
+    intensity=1.0,
+):
+    if model is None:
+        raise ValueError("Model is required for simulated drift report")
+
+    feature_names = feature_names or FEATURE_COLUMNS
+    clean_current_df, _ = load_cmapss_dataset(data_path, dataset_id)
+    reference_df = clean_current_df.copy()
+    current_df = apply_simulation_scenario(
+        clean_current_df,
+        scenario=scenario,
+        intensity=intensity,
+        random_state=_simulation_random_state(scenario, intensity),
+    )
+    thresholds = get_colleague_thresholds()
+
+    reference_predictions = model.predict(reference_df[feature_names])
+    current_predictions = model.predict(current_df[feature_names])
+    data_drift = calculate_data_drift(
+        reference_df,
+        current_df,
+        columns=feature_names,
+        threshold=thresholds["data_drift"],
+    )
+    target_drift = calculate_target_drift(
+        reference_df,
+        current_df,
+        threshold=thresholds["target_drift"],
+    )
+    concept_drift = calculate_concept_drift(
+        reference_predictions=reference_predictions,
+        reference_actual=reference_df["RUL"],
+        current_predictions=current_predictions,
+        current_actual=current_df["RUL"],
+        threshold=thresholds["concept_drift"],
+    )
+    concept_drift["status"] = "calculated"
+
+    report = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "scenario": scenario,
+        "intensity": float(max(0.0, min(float(intensity), MAX_SIMULATION_INTENSITY))),
+        "reference_dataset": f"train_{dataset_id}_baseline",
+        "current_dataset": f"simulated_{dataset_id}",
+        "data_path": str(data_path),
+        "thresholds": {
+            "data_drift": thresholds["data_drift"],
+            "target_drift": thresholds["target_drift"],
+            "concept_drift": thresholds["concept_drift"],
+        },
+        "threshold_source": thresholds["threshold_source"],
+        "data_drift": data_drift,
+        "target_drift": target_drift,
+        "concept_drift": concept_drift,
+        "prediction_summary": build_dataframe_prediction_summary(
+            current_df=current_df,
+            current_predictions=current_predictions,
+        ),
+    }
+    report = focus_result_on_scenario(report, scenario, intensity)
+    return save_drift_report(report, reports_dir)
+
+
+def calculate_calibrated_thresholds(
+    reference_df,
+    baseline_current_df,
+    model,
+    feature_names,
+    data_quantile=DEFAULT_DATA_THRESHOLD_QUANTILE,
+    target_quantile=DEFAULT_TARGET_THRESHOLD_QUANTILE,
+    concept_quantile=DEFAULT_CONCEPT_THRESHOLD_QUANTILE,
+    window_size=DEFAULT_THRESHOLD_WINDOW_SIZE,
+):
+    feature_names = feature_names or FEATURE_COLUMNS
+    windows = list(_iter_unit_windows(reference_df, window_size=window_size))
+    if not windows:
+        windows = [baseline_current_df]
+
+    reference_feature_stats = _reference_stats(reference_df, feature_names)
+    reference_target_stats = _reference_stats(reference_df, ["RUL"])["RUL"]
+    data_scores = []
+    target_scores = []
+    for window in windows:
+        feature_scores = [
+            _score_from_stats(
+                current_mean=float(window[feature].mean()),
+                reference_mean=stats["mean"],
+                reference_std=stats["std"],
+            )
+            for feature, stats in reference_feature_stats.items()
+        ]
+        data_scores.append(max(feature_scores) if feature_scores else 0.0)
+        target_scores.append(
+            _score_from_stats(
+                current_mean=float(window["RUL"].mean()),
+                reference_mean=reference_target_stats["mean"],
+                reference_std=reference_target_stats["std"],
+            )
+        )
+
+    reference_predictions = model.predict(reference_df[feature_names])
+    reference_mae = _mean_absolute_error(reference_predictions, reference_df["RUL"])
+    window_predictions = _predict_windows(model, windows, feature_names)
+    concept_scores = []
+    for window, predictions in zip(windows, window_predictions):
+        window_mae = _mean_absolute_error(predictions, window["RUL"])
+        if reference_mae == 0:
+            score = 0.0 if window_mae == 0 else MAX_DISPLAY_DRIFT_SCORE
+        else:
+            score = max(0.0, (window_mae - reference_mae) / reference_mae)
+        concept_scores.append(score)
+
+    return {
+        "data_drift": _quantile_threshold(data_scores, data_quantile),
+        "target_drift": _quantile_threshold(target_scores, target_quantile),
+        "concept_drift": _quantile_threshold(concept_scores, concept_quantile),
+        "threshold_source": (
+            f"calibrated_data_p{int(data_quantile * 100)}_"
+            f"target_p{int(target_quantile * 100)}_"
+            f"concept_p{int(concept_quantile * 100)}_from_reference_"
+            f"unit_windows_size_{window_size}"
+        ),
+    }
+
+
+def get_colleague_thresholds():
+    return {
+        "data_drift": COLLEAGUE_DATA_DRIFT_THRESHOLD,
+        "target_drift": COLLEAGUE_TARGET_DRIFT_THRESHOLD,
+        "concept_drift": COLLEAGUE_CONCEPT_DRIFT_THRESHOLD,
+        "threshold_source": "colleague_default_thresholds",
+    }
+
+
+def _predict_windows(model, windows, feature_names):
+    if not windows:
+        return []
+
+    lengths = [len(window) for window in windows]
+    combined_features = pd.concat(
+        [window[feature_names] for window in windows],
+        ignore_index=True,
+    )
+    combined_predictions = pd.Series(model.predict(combined_features))
+    predictions = []
+    start = 0
+    for length in lengths:
+        end = start + length
+        predictions.append(combined_predictions.iloc[start:end].reset_index(drop=True))
+        start = end
+    return predictions
+
+
+def _reference_stats(df, columns):
+    stats = {}
+    for column in columns:
+        series = pd.to_numeric(df[column], errors="coerce").dropna()
+        stats[column] = {
+            "mean": float(series.mean()),
+            "std": float(series.std()),
+        }
+    return stats
+
+
+def _score_from_stats(current_mean, reference_mean, reference_std):
+    mean_shift = abs(current_mean - reference_mean)
+    if abs(reference_std) <= FLOAT_TOLERANCE:
+        return 0.0 if mean_shift <= FLOAT_TOLERANCE else MAX_DISPLAY_DRIFT_SCORE
+    return mean_shift / reference_std
+
+
+def get_calibrated_thresholds(
+    data_path,
+    dataset_id,
+    reference_df,
+    baseline_current_df,
+    model,
+    feature_names,
+    data_quantile=DEFAULT_DATA_THRESHOLD_QUANTILE,
+    target_quantile=DEFAULT_TARGET_THRESHOLD_QUANTILE,
+    concept_quantile=DEFAULT_CONCEPT_THRESHOLD_QUANTILE,
+    window_size=DEFAULT_THRESHOLD_WINDOW_SIZE,
+):
+    cache_key = (
+        str(Path(data_path)),
+        dataset_id,
+        tuple(feature_names or FEATURE_COLUMNS),
+        float(data_quantile),
+        float(target_quantile),
+        float(concept_quantile),
+        int(window_size),
+        id(model),
+    )
+    if cache_key not in _THRESHOLD_CACHE:
+        _THRESHOLD_CACHE[cache_key] = calculate_calibrated_thresholds(
+            reference_df=reference_df,
+            baseline_current_df=baseline_current_df,
+            model=model,
+            feature_names=feature_names,
+            data_quantile=data_quantile,
+            target_quantile=target_quantile,
+            concept_quantile=concept_quantile,
+            window_size=window_size,
+        )
+    return dict(_THRESHOLD_CACHE[cache_key])
+
+
+def build_dataframe_prediction_summary(current_df, current_predictions):
+    predicted = pd.Series(current_predictions).reset_index(drop=True)
+    actual = current_df["RUL"].reset_index(drop=True)
+    errors = (predicted - actual).abs()
+    return {
+        "window_rows": int(len(current_df)),
+        "labeled_rows": int(len(current_df)),
+        "predicted_rul_mean": float(predicted.mean()),
+        "actual_rul_mean": float(actual.mean()),
+        "absolute_error_mae": float(errors.mean()),
+        "absolute_error_p95": float(errors.quantile(0.95)),
+    }
+
+
+def _iter_unit_windows(reference_df, window_size):
+    for _, unit_df in reference_df.groupby("unit"):
+        unit_df = unit_df.sort_values("cycle")
+        if len(unit_df) < window_size:
+            yield unit_df
+            continue
+        for start in range(0, len(unit_df) - window_size + 1, window_size):
+            yield unit_df.iloc[start : start + window_size]
+
+
+def _quantile_threshold(scores, quantile):
+    if not scores:
+        return 0.0
+    return float(pd.Series(scores).quantile(float(quantile)))
+
+
+def _simulation_random_state(scenario, intensity):
+    return 42 + sum(ord(char) for char in scenario) + int(float(intensity) * 1000)
+
+
 def run_prediction_window_drift_report(
     predictions,
     data_path="data/raw",
@@ -197,16 +458,32 @@ def run_prediction_window_drift_report(
     dataset_id="FD001",
     feature_names=None,
     reference_mae=None,
+    model=None,
     window_size=100,
     min_window_size=DEFAULT_MIN_WINDOW_SIZE,
     data_drift_threshold=2.0,
     target_drift_threshold=1.5,
     concept_drift_threshold=2.0,
+    threshold_source="manual_prediction_window_thresholds",
 ):
     feature_names = feature_names or FEATURE_COLUMNS
-    reference_df = load_train_dataset(data_path, WINDOW_REFERENCE_DATASET)
+    train_reference_df = load_train_dataset(data_path, dataset_id)
     window_df = build_prediction_window_dataframe(predictions, feature_names)
+    reference_df = build_clean_reference_window(
+        train_reference_df,
+        window_df,
+        feature_names,
+    )
+    reference_source = reference_df.attrs.get("source", f"train_{dataset_id}")
     labeled_window_df = window_df.dropna(subset=["RUL"])
+    if len(reference_df) == len(window_df):
+        labeled_positions = window_df.index.get_indexer(labeled_window_df.index)
+        labeled_reference_df = reference_df.iloc[labeled_positions].reset_index(
+            drop=True
+        )
+        labeled_window_df = labeled_window_df.reset_index(drop=True)
+    else:
+        labeled_reference_df = reference_df.dropna(subset=["RUL"])
     prediction_summary = build_prediction_window_summary(
         window_df=window_df,
         labeled_window_df=labeled_window_df,
@@ -227,7 +504,10 @@ def run_prediction_window_drift_report(
             threshold=data_drift_threshold,
         )
 
-    if len(labeled_window_df) < min_window_size:
+    if (
+        len(labeled_window_df) < min_window_size
+        or len(labeled_reference_df) < min_window_size
+    ):
         target_drift = _skipped_target_drift(
             threshold=target_drift_threshold,
             reason="not enough labeled prediction rows",
@@ -242,23 +522,40 @@ def run_prediction_window_drift_report(
         )
     else:
         target_drift = calculate_target_drift(
-            reference_df,
+            labeled_reference_df,
             labeled_window_df,
             threshold=target_drift_threshold,
         )
-        concept_drift = calculate_concept_drift_from_mae(
-            reference_mae=reference_mae,
-            current_predictions=labeled_window_df["predicted_rul"],
-            current_actual=labeled_window_df["RUL"],
-            threshold=concept_drift_threshold,
-        )
+        if model is not None:
+            reference_predictions = model.predict(labeled_reference_df[feature_names])
+            concept_drift = calculate_concept_drift(
+                reference_predictions=reference_predictions,
+                reference_actual=labeled_reference_df["RUL"],
+                current_predictions=labeled_window_df["predicted_rul"],
+                current_actual=labeled_window_df["RUL"],
+                threshold=concept_drift_threshold,
+            )
+            concept_drift["status"] = "calculated"
+        else:
+            concept_drift = calculate_concept_drift_from_mae(
+                reference_mae=reference_mae,
+                current_predictions=labeled_window_df["predicted_rul"],
+                current_actual=labeled_window_df["RUL"],
+                threshold=concept_drift_threshold,
+            )
 
     actual_window_size = min(int(window_size), len(predictions))
     report = {
         "created_at": datetime.now(timezone.utc).isoformat(),
-        "reference_dataset": f"train_{WINDOW_REFERENCE_DATASET}",
+        "reference_dataset": reference_source,
         "current_dataset": f"prediction_window_last_{actual_window_size}",
         "data_path": str(data_path),
+        "thresholds": {
+            "data_drift": data_drift_threshold,
+            "target_drift": target_drift_threshold,
+            "concept_drift": concept_drift_threshold,
+        },
+        "threshold_source": threshold_source,
         "data_drift": data_drift,
         "target_drift": target_drift,
         "concept_drift": concept_drift,
@@ -275,11 +572,51 @@ def build_prediction_window_dataframe(predictions, feature_names):
             continue
         row = {feature: float(input_payload[feature]) for feature in feature_names}
         row["RUL"] = prediction.get("actual_rul")
+        if "unit" in input_payload and input_payload["unit"] is not None:
+            row["unit"] = float(input_payload["unit"])
         if row["RUL"] is not None:
             row["RUL"] = float(row["RUL"])
         row["predicted_rul"] = float(prediction["predicted_rul"])
         rows.append(row)
-    return pd.DataFrame(rows, columns=[*feature_names, "RUL", "predicted_rul"])
+    return pd.DataFrame(rows, columns=["unit", *feature_names, "RUL", "predicted_rul"])
+
+
+def build_clean_reference_window(train_reference_df, window_df, feature_names):
+    if (
+        window_df.empty
+        or "unit" not in window_df.columns
+        or window_df["unit"].isna().any()
+    ):
+        reference_df = train_reference_df.reset_index(drop=True)
+        reference_df.attrs["source"] = "train_reference_fallback"
+        return reference_df
+
+    key_columns = ["unit", "cycle"]
+    reference_columns = [
+        *key_columns,
+        *[feature for feature in feature_names if feature not in key_columns],
+        "RUL",
+    ]
+    lookup = train_reference_df[reference_columns].copy()
+    keys = window_df[key_columns].copy()
+    keys["_window_index"] = window_df.index
+    reference_window = keys.merge(
+        lookup,
+        on=key_columns,
+        how="left",
+        validate="many_to_one",
+    ).sort_values("_window_index")
+
+    if reference_window["RUL"].isna().any():
+        reference_df = train_reference_df.reset_index(drop=True)
+        reference_df.attrs["source"] = "train_reference_fallback"
+        return reference_df
+
+    reference_window = reference_window.drop(columns=["_window_index"]).reset_index(
+        drop=True
+    )
+    reference_window.attrs["source"] = "clean_train_matching_prediction_window"
+    return reference_window
 
 
 def build_prediction_window_summary(window_df, labeled_window_df):
@@ -308,7 +645,7 @@ def calculate_concept_drift_from_mae(
     reference_mae,
     current_predictions,
     current_actual,
-    threshold=0.25,
+    threshold=0.3,
 ):
     current_mae = _mean_absolute_error(current_predictions, current_actual)
     if reference_mae is None:
