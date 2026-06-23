@@ -9,11 +9,6 @@ import matplotlib
 import pandas as pd
 
 from data.data_loader import RAW_FEATURES
-from monitoring.drift import (
-    calculate_data_drift,
-    calculate_target_drift,
-    load_cmapss_dataset,
-)
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -25,6 +20,72 @@ SCENARIO_DRIFT_TYPES = {
     "concept_drift": {"concept_drift"},
     "all": {"data_drift", "target_drift", "concept_drift"},
 }
+MAX_SIMULATION_INTENSITY = 1.0
+DATA_SHIFT_MULTIPLIER = 1.0
+
+
+def validate_scenario(scenario):
+    if scenario not in SUPPORTED_SCENARIOS:
+        supported = ", ".join(sorted(SUPPORTED_SCENARIOS))
+        raise ValueError(
+            f"Unsupported drift simulation scenario: {scenario}. Use: {supported}"
+        )
+
+
+def get_active_drift_types(scenario, intensity):
+    validate_scenario(scenario)
+    bounded_intensity = max(0.0, min(float(intensity), MAX_SIMULATION_INTENSITY))
+    if bounded_intensity <= 0.0:
+        return set()
+    return SCENARIO_DRIFT_TYPES[scenario]
+
+
+def apply_simulation_scenario(
+    current_df,
+    scenario,
+    intensity,
+    random_state=42,
+    model=None,
+    feature_names=None,
+):
+    validate_scenario(scenario)
+    bounded_intensity = max(0.0, min(float(intensity), MAX_SIMULATION_INTENSITY))
+    active_drift_types = get_active_drift_types(scenario, bounded_intensity)
+    simulated = current_df.copy()
+
+    if "data_drift" in active_drift_types:
+        simulated["sensor2"] = (
+            simulated["sensor2"] + 2.0 * DATA_SHIFT_MULTIPLIER * bounded_intensity
+        )
+        simulated["sensor4"] = (
+            simulated["sensor4"] + 20.0 * DATA_SHIFT_MULTIPLIER * bounded_intensity
+        )
+        simulated["sensor11"] = (
+            simulated["sensor11"] + 1.0 * DATA_SHIFT_MULTIPLIER * bounded_intensity
+        )
+        simulated["sensor15"] = (
+            simulated["sensor15"] + 0.12 * DATA_SHIFT_MULTIPLIER * bounded_intensity
+        )
+
+    if "target_drift" in active_drift_types:
+        multiplier = max(0.05, 1.0 - 0.9 * bounded_intensity)
+        simulated["RUL"] = (simulated["RUL"] * multiplier).clip(lower=0)
+
+    if "concept_drift" in active_drift_types:
+        shuffled = (
+            simulated["RUL"]
+            .sample(
+                frac=1.0,
+                random_state=random_state,
+            )
+            .reset_index(drop=True)
+        )
+        simulated["RUL"] = (
+            (1.0 - bounded_intensity) * simulated["RUL"].reset_index(drop=True)
+            + bounded_intensity * shuffled
+        ).to_numpy()
+
+    return simulated
 
 
 def run_drift_simulation(
@@ -38,10 +99,11 @@ def run_drift_simulation(
     sleep_seconds=0.0,
     on_window=None,
 ):
-    if scenario not in SUPPORTED_SCENARIOS:
-        raise ValueError(f"Unsupported drift simulation scenario: {scenario}")
+    validate_scenario(scenario)
     if model is None:
         raise ValueError("Model is required for drift simulation")
+
+    from monitoring.drift import load_cmapss_dataset
 
     feature_names = feature_names or RAW_FEATURES
     _, current_base_df = load_cmapss_dataset(data_path, dataset_id)
@@ -56,7 +118,7 @@ def run_drift_simulation(
     final_predictions = None
 
     for window in range(1, windows + 1):
-        intensity = window / windows
+        intensity = MAX_SIMULATION_INTENSITY * window / windows
         current_df = apply_simulation_scenario(
             current_base_df,
             scenario=scenario,
@@ -106,43 +168,6 @@ def run_drift_simulation(
     return report
 
 
-def apply_simulation_scenario(
-    current_df,
-    scenario,
-    intensity,
-    random_state,
-    model=None,
-    feature_names=None,
-):
-    simulated = current_df.copy()
-
-    if scenario in {"data_drift", "all"}:
-        simulated["sensor2"] = simulated["sensor2"] + 2.0 * intensity
-        simulated["sensor4"] = simulated["sensor4"] + 20.0 * intensity
-        simulated["sensor11"] = simulated["sensor11"] + 1.0 * intensity
-        simulated["sensor15"] = simulated["sensor15"] + 0.12 * intensity
-
-    if scenario in {"target_drift", "all"}:
-        multiplier = max(0.05, 1.0 - 0.9 * intensity)
-        simulated["RUL"] = (simulated["RUL"] * multiplier).clip(lower=0)
-
-    if scenario in {"concept_drift", "all"}:
-        shuffled = (
-            simulated["RUL"]
-            .sample(
-                frac=1.0,
-                random_state=random_state,
-            )
-            .reset_index(drop=True)
-        )
-        simulated["RUL"] = (
-            (1.0 - intensity) * simulated["RUL"].reset_index(drop=True)
-            + intensity * shuffled
-        ).to_numpy()
-
-    return simulated
-
-
 def calculate_simulation_window(
     reference_df,
     current_df,
@@ -153,6 +178,8 @@ def calculate_simulation_window(
     window,
     intensity,
 ):
+    from monitoring.drift import calculate_data_drift, calculate_target_drift
+
     data_drift = calculate_data_drift(reference_df, current_df, columns=feature_names)
     target_drift = calculate_target_drift(reference_df, current_df)
     current_mae = _mean_absolute_error(current_predictions, current_df["RUL"])
@@ -161,15 +188,15 @@ def calculate_simulation_window(
         0.0
         if reference_mae == 0 and current_mae == 0
         else (
-            1_000_000.0
+            10.0
             if reference_mae == 0
             else max(0.0, (current_mae - reference_mae) / reference_mae)
         )
     )
     concept_drift = {
-        "drift_detected": bool(concept_score > 0.25),
+        "drift_detected": bool(concept_score > 0.3),
         "score": float(concept_score),
-        "threshold": 0.25,
+        "threshold": 0.3,
         "reference_mae": float(reference_mae),
         "current_mae": float(current_mae),
         "status": "calculated",
@@ -184,6 +211,7 @@ def calculate_simulation_window(
             "drift_detected": target_drift["drift_detected"],
             "score": float(target_drift["score"]),
             "threshold": float(target_drift["threshold"]),
+            "status": target_drift.get("status", "calculated"),
         },
         "concept_drift": concept_drift,
         "prediction_error_mae": float(current_mae),
@@ -191,7 +219,42 @@ def calculate_simulation_window(
         "actual_rul_mean": float(current_df["RUL"].mean()),
         "predicted_rul_mean": float(pd.Series(current_predictions).mean()),
     }
-    return _focus_window_result_on_scenario(window_result, scenario)
+    return focus_result_on_scenario(window_result, scenario, intensity)
+
+
+def focus_result_on_scenario(report, scenario, intensity=None):
+    if intensity is None:
+        intensity = report.get("intensity", MAX_SIMULATION_INTENSITY)
+    active_drift_types = get_active_drift_types(scenario, intensity)
+    report["active_drift_types"] = sorted(active_drift_types)
+
+    if "data_drift" not in active_drift_types:
+        report["data_drift"] = {
+            **report["data_drift"],
+            "drift_detected": False,
+            "score": 0.0,
+            "drifted_features_count": 0,
+            "drifted_features": [],
+            "status": "not_applicable_for_scenario",
+        }
+
+    if "target_drift" not in active_drift_types:
+        report["target_drift"] = {
+            **report["target_drift"],
+            "drift_detected": False,
+            "score": 0.0,
+            "status": "not_applicable_for_scenario",
+        }
+
+    if "concept_drift" not in active_drift_types:
+        report["concept_drift"] = {
+            **report["concept_drift"],
+            "drift_detected": False,
+            "score": 0.0,
+            "status": "not_applicable_for_scenario",
+        }
+
+    return report
 
 
 def save_simulation_report(
@@ -325,40 +388,9 @@ def _compact_data_drift(data_drift):
         "threshold": float(data_drift["threshold"]),
         "drifted_features_count": int(data_drift["drifted_features_count"]),
         "drifted_features": data_drift["drifted_features"],
+        "features": data_drift.get("features", {}),
+        "status": data_drift.get("status", "calculated"),
     }
-
-
-def _focus_window_result_on_scenario(window_result, scenario):
-    active_drift_types = SCENARIO_DRIFT_TYPES[scenario]
-    window_result["active_drift_types"] = sorted(active_drift_types)
-
-    if "data_drift" not in active_drift_types:
-        window_result["data_drift"] = {
-            **window_result["data_drift"],
-            "drift_detected": False,
-            "score": 0.0,
-            "drifted_features_count": 0,
-            "drifted_features": [],
-            "status": "not_applicable_for_scenario",
-        }
-
-    if "target_drift" not in active_drift_types:
-        window_result["target_drift"] = {
-            **window_result["target_drift"],
-            "drift_detected": False,
-            "score": 0.0,
-            "status": "not_applicable_for_scenario",
-        }
-
-    if "concept_drift" not in active_drift_types:
-        window_result["concept_drift"] = {
-            **window_result["concept_drift"],
-            "drift_detected": False,
-            "score": 0.0,
-            "status": "not_applicable_for_scenario",
-        }
-
-    return window_result
 
 
 def _choose_plot_feature(reference_df, current_df, feature_names):
@@ -472,7 +504,7 @@ def _build_plotly_dashboard_html(data):
     }};
 
     document.getElementById("subtitle").textContent =
-      `${{data.scenario}} · ${{data.created_at}} · feature: ${{data.top_feature}}`;
+      `${{data.scenario}} - ${{data.created_at}} - feature: ${{data.top_feature}}`;
 
     const summary = [
       ["Data drift", latest.data_drift.drift_detected ? "YES" : "NO"],

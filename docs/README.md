@@ -1,9 +1,9 @@
 # Documentation
 
-[← Back to README](../README.md)
+[Back to README](../README.md)
 
-Этот каталог превращает репозиторий в компактный knowledge hub: README остается
-главной страницей, а крупные темы вынесены в отдельные страницы.
+This directory is the repository knowledge hub. The root `README.md` is the
+landing page, while larger topics are split into focused documentation pages.
 
 ## Navigation
 
@@ -11,31 +11,32 @@
 
 | Page | Purpose |
 | --- | --- |
-| [Project overview](project/overview.md) | Состав проекта и MLOps-контур |
-| [Repository structure](project/structure.md) | Директории и ответственность модулей |
-| [License status](project/license.md) | Текущий статус лицензирования |
+| [Project overview](project/overview.md) | Project scope and MLOps components |
+| [Repository structure](project/structure.md) | Directory layout and module responsibilities |
+| [License status](project/license.md) | Current licensing status |
 
 ### Guides
 
 | Page | Purpose |
 | --- | --- |
-| [Quickstart](guides/quickstart.md) | Локальный запуск проекта |
-| [API](guides/api.md) | FastAPI endpoints и OpenAPI |
-| [MLflow and DVC](guides/mlflow-dvc.md) | Tracking, registry, MinIO, DVC |
-| [Docker](guides/docker.md) | Docker Compose и ручная сборка image |
-| [Kubernetes](guides/kubernetes.md) | Minikube и Kubernetes manifests |
-| [Monitoring and drift](guides/monitoring.md) | Drift reports и Prometheus metrics |
+| [Quickstart](guides/quickstart.md) | Local project startup |
+| [API](guides/api.md) | FastAPI endpoints and OpenAPI |
+| [MLflow and DVC](guides/mlflow-dvc.md) | Tracking, registry, MinIO and DVC |
+| [Docker](guides/docker.md) | Docker Compose and manual image build |
+| [Kubernetes](guides/kubernetes.md) | Minikube and Kubernetes manifests |
+| [Monitoring and drift](guides/monitoring.md) | Drift reports, Prometheus metrics and Grafana |
 
 ### Workflows
 
 | Page | Purpose |
 | --- | --- |
 | [CI/CD](workflows/ci-cd.md) | GitHub Actions pipeline |
-| [Git flow](workflows/git-flow.md) | Ветки и Conventional Commits |
+| [Argo CD](workflows/argocd.md) | GitOps delivery to Kubernetes / Minikube |
+| [Git flow](workflows/git-flow.md) | Branches and Conventional Commits |
 
 ### Templates and Reference
 
 | Page | Purpose |
 | --- | --- |
-| [Cookiecutter](templates/cookiecutter.md) | Генерация нового проекта |
-| [Commands](reference/commands.md) | Частые команды |
+| [Cookiecutter](templates/cookiecutter.md) | Generate a new project from the template |
+| [Commands](reference/commands.md) | Common commands |

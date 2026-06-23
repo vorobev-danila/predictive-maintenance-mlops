@@ -26,6 +26,11 @@ Run training:
 uv run python src/pipeline.py
 ```
 
+In Docker Compose, the API service enables MLflow logging for `/retrain` with
+`ENABLE_MLFLOW_LOGGING=true`. The MLflow service also allows internal compose
+requests from `mlflow:5000`, so the API can log metrics, artifacts, and the
+registered model during retraining.
+
 Open MLflow UI:
 
 ```text

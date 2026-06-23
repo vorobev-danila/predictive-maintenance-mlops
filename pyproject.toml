@@ -21,6 +21,7 @@ dependencies = [
     "dvc[s3]>=3.67.1",
     "mlflow>=3.5.0",
     "boto3>=1.42.84",
+    "streamlit>=1.58.0",
 ]
 
 [project.optional-dependencies]

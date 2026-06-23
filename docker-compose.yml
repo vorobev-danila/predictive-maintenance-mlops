@@ -16,9 +16,57 @@ services:
       PREDICTION_DB_PATH: /app/state/predictions.db
       REPORTS_DIR: /app/state/reports
       DRIFT_DATA_PATH: /app/data/raw
+      DRIFT_WINDOW_SIZE: ${DRIFT_WINDOW_SIZE:-10}
+      DRIFT_MIN_WINDOW_SIZE: ${DRIFT_MIN_WINDOW_SIZE:-5}
+      ENABLE_MLFLOW_LOGGING: ${ENABLE_MLFLOW_LOGGING:-true}
     volumes:
+      - ./src:/app/src:ro
       - ./data/raw:/app/data/raw:ro
       - ./state:/app/state
+
+  ui:
+    build: .
+    container_name: ui
+    depends_on:
+      - api
+      - grafana
+      - mlflow
+    command: >
+      streamlit run src/ui/streamlit_app.py
+      --server.address 0.0.0.0
+      --server.port 8501
+    ports:
+      - "8501:8501"
+    environment:
+      API_URL: http://api:8080
+      API_PUBLIC_URL: http://localhost:8080
+      GRAFANA_URL: http://localhost:3000
+      PROMETHEUS_URL: http://prometheus:9090
+      PROMETHEUS_PUBLIC_URL: http://localhost:9090
+      MLFLOW_URL: http://localhost:5000
+      MLFLOW_API_URL: http://mlflow:5000
+      MINIO_URL: http://localhost:9001
+      PYTHONPATH: /app/src:/app
+    volumes:
+      - ./src:/app/src:ro
+
+  drift-scheduler:
+    build: .
+    container_name: drift-scheduler
+    depends_on:
+      - api
+    command: >
+      python -m monitoring.drift_scheduler
+      --api-url http://api:8080
+      --dataset-id FD001
+      --scenario all
+      --intensity 0.0
+      --interval 60
+    environment:
+      PYTHONPATH: /app/src:/app
+    volumes:
+      - ./src:/app/src:ro
+    restart: unless-stopped
 
   minio:
     image: minio/minio
@@ -44,11 +92,13 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-minio}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-minio123}
       MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      MLFLOW_SERVER_ALLOWED_HOSTS: ${MLFLOW_SERVER_ALLOWED_HOSTS:-mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000}
     command: >
       mlflow server
       --backend-store-uri sqlite:///mlflow.db
       --default-artifact-root s3://mlflow
       --host 0.0.0.0
+      --allowed-hosts ${MLFLOW_SERVER_ALLOWED_HOSTS:-mlflow,mlflow:5000,localhost,localhost:5000,127.0.0.1,127.0.0.1:5000}
 
   minio-create-buckets:
     image: minio/mc
@@ -68,6 +118,7 @@ services:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./prometheus_alert_rules.yml:/etc/prometheus/alert_rules.yml
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -78,8 +129,13 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
     volumes:
       - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
 
 volumes:
   minio_data:

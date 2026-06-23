@@ -17,6 +17,12 @@ CI/CD is defined in:
 .github/workflows/ci-cd.yml
 ```
 
+GitOps delivery is defined separately in:
+
+```text
+argocd/application.yaml
+```
+
 ## Triggers
 
 The workflow runs on:
@@ -49,6 +55,10 @@ The `deploy` job runs for pull requests and `main`:
 4. `kubectl apply -f k8s/`;
 5. wait for API rollout;
 6. smoke test `/health`.
+
+For a persistent Kubernetes / Minikube environment, Argo CD watches the `k8s/`
+directory and keeps the cluster synchronized with Git. See
+[Argo CD workflow](argocd.md).
 
 ## Local Parity
 

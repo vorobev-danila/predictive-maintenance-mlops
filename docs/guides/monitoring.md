@@ -10,16 +10,23 @@
 - [Plotly debug dashboard](#plotly-debug-dashboard)
 - [Report format](#report-format)
 - [Prometheus metrics](#prometheus-metrics)
+- [Prometheus alerts](#prometheus-alerts)
+- [Streamlit UI alerts](#streamlit-ui-alerts)
 - [Runtime paths](#runtime-paths)
 
 ## Drift Workflow
 
-The project compares a reference CMAPSS dataset with a current CMAPSS dataset:
+The current demo drift workflow compares clean FD001 train data with the latest
+simulated FD001 prediction window received through `/predict`:
 
 ```text
-reference = train_FD001
-current   = test_FD001
+reference = clean train_FD001 rows matching current unit/cycle
+current   = simulated_FD001_window_last_N
 ```
+
+By default, `N` is controlled by `DRIFT_WINDOW_SIZE=10`. This keeps Grafana and
+Prometheus focused on the recent incoming stream instead of recalculating drift
+over the full simulated dataset.
 
 The drift module calculates:
 
@@ -35,18 +42,24 @@ src/monitoring/drift.py
 
 ## API Endpoints
 
-Run drift calculation:
+Run prediction-window drift calculation:
 
 ```bash
 curl -X POST http://localhost:8080/drift/run \
   -H "Content-Type: application/json" \
-  -d '{"dataset_id": "FD001"}'
+  -d '{"dataset_id": "FD001", "scenario": "all", "intensity": 1.0}'
 ```
 
 Read latest report:
 
 ```bash
 curl http://localhost:8080/drift/latest
+```
+
+Read saved drift reports:
+
+```bash
+curl http://localhost:8080/drift/reports?limit=10
 ```
 
 Run a demo simulation and update Prometheus metrics window by window:
@@ -62,12 +75,17 @@ capture intermediate windows instead of only the final gauge values.
 
 ## Drift Simulations
 
-The simulation endpoint creates controlled drift scenarios from the CMAPSS
-current data. The baseline is the unmodified `test_FD001` dataset, and each
-window is a synthetic modification of that same dataset. This isolates the
-demonstration from natural train/test distribution differences. The API sends
-each synthetic window through the loaded model, updates Prometheus gauges, and
-writes JSON, CSV, PNG and Plotly HTML artifacts for the demo.
+There are two complementary demo flows:
+
+| Flow | Endpoint/tool | Purpose |
+| --- | --- | --- |
+| Runtime stream | `/predict` + `/drift/run` | Feed simulated rows into the API and monitor the latest prediction window in Prometheus/Grafana |
+| Offline simulation report | `/drift/simulate` or `python -m monitoring.drift_simulation` | Generate multi-window JSON/CSV/PNG/Plotly reports for debugging distributions |
+
+The offline simulation endpoint creates controlled drift scenarios from the
+CMAPSS current data. The baseline is the unmodified `test_FD001` dataset, and
+each window is a synthetic modification of that same dataset. This isolates the
+demonstration from natural train/test distribution differences.
 
 Single-drift scenarios are intentionally focused: only the selected drift flag is
 reported as active, even when the synthetic change has secondary effects on raw
@@ -83,7 +101,7 @@ Supported scenarios:
 | `concept_drift` | Feature-to-target relation is broken while features and target distribution stay similar | Only `concept_drift_detected` |
 | `all` | Combines data, target and concept drift effects | All three drift flags |
 
-Run a single scenario:
+Run a single offline scenario:
 
 ```bash
 curl -X POST http://localhost:8080/drift/simulate \
@@ -107,11 +125,17 @@ Local report-only mode without FastAPI:
 uv run python -m monitoring.drift_simulation --scenario all --windows 6
 ```
 
+Stream simulated prediction rows through the public API:
+
+```bash
+uv run python -m data.drift_simulation_stream --scenario all --windows 7 --delay 1
+```
+
 ## Plotly Debug Dashboard
 
-Each simulation also exports a standalone Plotly HTML dashboard. It is useful
-when Grafana looks flat and you need to inspect the raw simulation results
-without Prometheus scraping delay.
+Each offline simulation also exports a standalone Plotly HTML dashboard. It is
+useful when Grafana looks flat and you need to inspect the raw simulation
+results without Prometheus scraping delay.
 
 Docker Compose path on the host:
 
@@ -165,6 +189,7 @@ Main report sections:
 | `data_drift` | Feature distribution shifts |
 | `target_drift` | RUL distribution shift |
 | `concept_drift` | Model error growth |
+| `prediction_summary` | Latest prediction-window summary, when using `/drift/run` |
 
 Simulation reports also contain:
 
@@ -174,7 +199,7 @@ Simulation reports also contain:
 | `latest_window` | Final simulated window |
 | `prediction_error_mae` | MAE for the current synthetic window |
 | `prediction_error_p95` | 95th percentile absolute prediction error |
-| `artifacts` | Paths to CSV and PNG plots |
+| `plots` | Paths to PNG plots |
 | `plotly_dashboard` | Path to standalone Plotly HTML dashboard |
 
 ## Prometheus Metrics
@@ -190,12 +215,20 @@ After `/drift/run` or `/drift/simulate`, the API updates these gauges:
 | `concept_drift_score` | Latest concept drift score |
 | `concept_drift_detected` | `1` when concept drift is detected |
 | `drifted_features_count` | Number of drifted features |
-| `drift_simulation_window` | Latest simulation window number |
-| `drift_simulation_scenario{scenario=...}` | Active simulation scenario flag |
-| `model_prediction_error_mae` | Latest synthetic-window MAE |
-| `model_prediction_error_p95` | Latest synthetic-window p95 absolute error |
-| `model_actual_rul_mean` | Latest synthetic-window actual RUL mean |
-| `model_predicted_rul_mean` | Latest synthetic-window predicted RUL mean |
+| `feature_drift_score{feature=...}` | Latest drift score by feature |
+| `feature_drift_detected{feature=...}` | Latest drift flag by feature |
+| `feature_reference_mean{feature=...}` | Reference mean by feature |
+| `feature_current_mean{feature=...}` | Current mean by feature |
+| `prediction_window_predicted_rul_mean` | Mean predicted RUL in latest `/drift/run` window |
+| `prediction_window_actual_rul_mean` | Mean actual RUL in latest labeled `/drift/run` window |
+| `prediction_window_absolute_error_mae` | MAE in latest labeled `/drift/run` window |
+| `prediction_window_absolute_error_p95` | p95 absolute error in latest labeled `/drift/run` window |
+| `drift_simulation_window` | Latest `/drift/simulate` window number |
+| `drift_simulation_scenario{scenario=...}` | Active offline simulation scenario flag |
+| `model_prediction_error_mae` | Latest offline synthetic-window MAE |
+| `model_prediction_error_p95` | Latest offline synthetic-window p95 absolute error |
+| `model_actual_rul_mean` | Latest offline synthetic-window actual RUL mean |
+| `model_predicted_rul_mean` | Latest offline synthetic-window predicted RUL mean |
 
 Prometheus reads them from:
 
@@ -213,14 +246,55 @@ data_drift_detected
 target_drift_detected
 concept_drift_detected
 drifted_features_count
+feature_drift_score
 model_prediction_error_mae
-model_prediction_error_p95
+prediction_window_absolute_error_mae
 drift_simulation_window
 drift_simulation_scenario
 ```
 
 For visual warnings, use Stat panels for `*_drift_detected` gauges with a
 threshold where `0` is OK and `1` is alerting.
+
+## Prometheus Alerts
+
+Prometheus loads drift alerting rules from:
+
+```text
+prometheus_alert_rules.yml
+```
+
+Configured alerts:
+
+| Alert | Expression |
+| --- | --- |
+| `DataDriftDetected` | `data_drift_detected == 1` |
+| `TargetDriftDetected` | `target_drift_detected == 1` |
+| `ConceptDriftDetected` | `concept_drift_detected == 1` |
+| `AnyDriftDetected` | any drift flag is active |
+
+Check active alerts:
+
+```bash
+curl http://localhost:9090/api/v1/alerts
+```
+
+## Streamlit UI Alerts
+
+The Streamlit UI displays real Prometheus alerts from:
+
+```text
+http://prometheus:9090/api/v1/alerts
+```
+
+Detailed drift flags and scores are still available in Grafana panels and in
+the latest JSON report from `/drift/latest`.
+
+Open the UI locally:
+
+```text
+http://localhost:8501
+```
 
 ## Runtime Paths
 

@@ -10,7 +10,7 @@ MLOps-проект для прогнозирования остаточного 
 
 Проект объединяет полный учебный MLOps-контур: обучение модели, MLflow tracking,
 DVC-версионирование данных, FastAPI-инференс, историю предсказаний в SQLite,
-Docker, Kubernetes/Minikube, Prometheus/Grafana и CI/CD в GitHub Actions.
+Docker, Kubernetes/Minikube, Prometheus/Grafana, CI/CD в GitHub Actions и Argo CD.
 
 ## Quick Links
 
@@ -23,6 +23,7 @@ Docker, Kubernetes/Minikube, Prometheus/Grafana и CI/CD в GitHub Actions.
 | Kubernetes / Minikube | [docs/guides/kubernetes.md](docs/guides/kubernetes.md) |
 | Drift monitoring | [docs/guides/monitoring.md](docs/guides/monitoring.md) |
 | CI/CD | [docs/workflows/ci-cd.md](docs/workflows/ci-cd.md) |
+| Argo CD | [docs/workflows/argocd.md](docs/workflows/argocd.md) |
 | Git flow | [docs/workflows/git-flow.md](docs/workflows/git-flow.md) |
 | Cookiecutter template | [docs/templates/cookiecutter.md](docs/templates/cookiecutter.md) |
 | Полезные команды | [docs/reference/commands.md](docs/reference/commands.md) |
@@ -39,7 +40,7 @@ Docker, Kubernetes/Minikube, Prometheus/Grafana и CI/CD в GitHub Actions.
 - **Drift:** data drift, target drift, concept drift и JSON-отчеты.
 - **Контейнеризация:** `Dockerfile` и `docker-compose.yml`.
 - **Оркестрация:** Kubernetes manifests в `k8s/`.
-- **CI/CD:** GitHub Actions workflow `.github/workflows/ci-cd.yml`.
+- **CI/CD:** GitHub Actions workflow `.github/workflows/ci-cd.yml` и Argo CD application в `argocd/`.
 - **Шаблонизация:** Cookiecutter template в `cookiecutter-template/`.
 
 ## Documentation Map
@@ -62,6 +63,7 @@ Docker, Kubernetes/Minikube, Prometheus/Grafana и CI/CD в GitHub Actions.
 ### Workflows
 
 - [CI/CD](docs/workflows/ci-cd.md) - проверки, сборка и deploy в kind.
+- [Argo CD](docs/workflows/argocd.md) - GitOps delivery в Kubernetes / Minikube.
 - [Git flow](docs/workflows/git-flow.md) - feature branch flow и Conventional Commits.
 
 ### Templates and Reference

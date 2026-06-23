@@ -8,6 +8,7 @@
 - [Run in Minikube](#run-in-minikube)
 - [Open services](#open-services)
 - [Manifests](#manifests)
+- [Argo CD delivery](#argo-cd-delivery)
 - [SQLite state](#sqlite-state)
 
 ## Role in the Project
@@ -70,6 +71,7 @@ Kubernetes manifests include:
 - MLflow Deployment and Service;
 - Prometheus Deployment, Service and ConfigMap;
 - Grafana Deployment and Service;
+- Streamlit UI Deployment and Service;
 - PVC for API state, MinIO, MLflow, Prometheus and Grafana;
 - ConfigMap and Secret for runtime settings.
 
@@ -78,6 +80,17 @@ Validate manifests:
 ```bash
 docker run --rm -v "${PWD}:/work" ghcr.io/yannh/kubeconform:latest -strict -summary /work/k8s
 ```
+
+## Argo CD Delivery
+
+Argo CD GitOps delivery is configured separately from raw Kubernetes manifests:
+
+```text
+argocd/application.yaml
+```
+
+See [Argo CD workflow](../workflows/argocd.md) for installation, sync and
+validation commands.
 
 ## SQLite State
 

@@ -33,7 +33,7 @@ tracking, serving, storage, CI/CD, контейнеризацию и запус�
 | Packaging | Docker image |
 | Local debug | Docker Compose |
 | Orchestration | Kubernetes / Minikube |
-| CI/CD | GitHub Actions |
+| CI/CD | GitHub Actions + Argo CD |
 | Template | Cookiecutter |
 
 ## Current Components
@@ -42,8 +42,9 @@ tracking, serving, storage, CI/CD, контейнеризацию и запус�
   and logs metadata to MLflow.
 - `src/api/main.py` exposes inference, metrics, retraining and prediction history.
 - `src/storage/prediction_repository.py` isolates SQLite persistence from API logic.
-- `k8s/` contains manifests for API, MinIO, MLflow, Prometheus and Grafana.
+- `k8s/` contains manifests for API, Streamlit UI, MinIO, MLflow, Prometheus and Grafana.
+- `argocd/application.yaml` configures GitOps synchronization for Kubernetes manifests.
 - `.github/workflows/ci-cd.yml` validates code, tests, Docker build and Kubernetes deploy.
 
-Next planned areas are drift reports, web UI, anomaly flags, richer Grafana
-dashboards and Argo CD delivery.
+Next planned areas are production image promotion, anomaly flag tuning and richer
+Grafana dashboards.
