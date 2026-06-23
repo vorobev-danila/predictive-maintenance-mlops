@@ -1,0 +1,10 @@
+model:
+  type: RandomForestRegressor
+  n_estimators: 100
+  max_depth: 10
+  random_state: 42
+
+mlflow:
+  tracking_uri: "{{ cookiecutter.mlflow_tracking_uri }}"
+  experiment_name: "{{ cookiecutter.project_slug }}"
+  registered_model_name: "{{ cookiecutter.registered_model_name }}"

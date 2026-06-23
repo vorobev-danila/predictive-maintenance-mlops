@@ -1,0 +1,41 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main"]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "{{ cookiecutter.python_version }}"
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: flake8 src tests
+      - name: Format check
+        run: black --check src tests
+      - name: Tests
+        run: pytest
+
+  docker-build:
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t {{ cookiecutter.project_slug }}:${{ "{{" }} github.sha {{ "}}" }} .
+
+  deploy:
+    needs: docker-build
+    if: ${{ "{{" }} github.event_name == 'push' && github.ref == 'refs/heads/main' {{ "}}" }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy placeholder
+        run: echo "Configure registry credentials and kubectl context for production deployment."

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: predictive-maintenance-api
+  labels:
+    app: predictive-maintenance-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: predictive-maintenance-api
+  template:
+    metadata:
+      labels:
+        app: predictive-maintenance-api
+    spec:
+      containers:
+        - name: api
+          image: predictive-maintenance-mlops:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: predictive-maintenance-config
+            - secretRef:
+                name: predictive-maintenance-secrets
+          volumeMounts:
+            - name: api-data
+              mountPath: /app/data/raw
+            - name: api-state
+              mountPath: /app/state
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            timeoutSeconds: 5
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 120
+            timeoutSeconds: 5
+            periodSeconds: 20
+            failureThreshold: 6
+      volumes:
+        - name: api-data
+          persistentVolumeClaim:
+            claimName: api-data-pvc
+        - name: api-state
+          persistentVolumeClaim:
+            claimName: api-state-pvc

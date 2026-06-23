@@ -1,37 +1,47 @@
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import numpy as np
-import warnings
-warnings.filterwarnings('ignore')
+from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
-def train_random_forest(X_train, y_train, X_val, y_val):
-    # Обучение случайного леса
-    model = RandomForestRegressor(
-        n_estimators=30,
-        max_depth=5,
-        min_samples_split=20,
-        min_samples_leaf=10,
-        random_state=42
+MODEL_PARAMS = {
+    "n_estimators": 240,
+    "learning_rate": 0.05,
+    "max_depth": 3,
+    "subsample": 0.8,
+    "random_state": 42,
+}
+
+
+def build_model_pipeline(model_params=None):
+    params = MODEL_PARAMS | (model_params or {})
+    return Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+            ("model", GradientBoostingRegressor(**params)),
+        ]
     )
-    
-    model.fit(X_train, y_train)
-    
-    y_pred_train = model.predict(X_train)
-    y_pred_val = model.predict(X_val)
-    
-    train_mae = mean_absolute_error(y_train, y_pred_train)
-    val_mae = mean_absolute_error(y_val, y_pred_val)
-    train_rmse = np.sqrt(mean_squared_error(y_train, y_pred_train))
-    val_rmse = np.sqrt(mean_squared_error(y_val, y_pred_val))
-    train_r2 = r2_score(y_train, y_pred_train)
-    val_r2 = r2_score(y_val, y_pred_val)
-    
-    print("Результаты обучения")
-    print(f"Обучающая MAE: {train_mae:.2f}")
-    print(f"Валидационная MAE: {val_mae:.2f}")
-    print(f"Обучающая RMSE: {train_rmse:.2f}")
-    print(f"Валидационная RMSE: {val_rmse:.2f}")
-    print(f"Обучающая R²: {train_r2:.3f}")
-    print(f"Валидационная R²: {val_r2:.3f}")
-    
-    return model, train_mae, val_mae, train_rmse, val_rmse, train_r2, val_r2
+
+
+def calculate_metrics(y_true, y_pred):
+    return {
+        "mae": float(mean_absolute_error(y_true, y_pred)),
+        "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+        "r2": float(r2_score(y_true, y_pred)),
+    }
+
+
+def train_gradient_boosting(
+    X_train, y_train, X_val=None, y_val=None, model_params=None
+):
+    pipeline = build_model_pipeline(model_params)
+    pipeline.fit(X_train, y_train)
+
+    train_metrics = calculate_metrics(y_train, pipeline.predict(X_train))
+    if X_val is None or y_val is None:
+        return pipeline, train_metrics, None
+
+    validation_metrics = calculate_metrics(y_val, pipeline.predict(X_val))
+    return pipeline, train_metrics, validation_metrics

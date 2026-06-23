@@ -21,17 +21,24 @@ ENV/
 # Jupyter Notebook
 .ipynb_checkpoints/
 *.ipynb
+!notebooks/predictive-maintenance-mlops-advanced-experiments.ipynb
 
 # Файлы данных и моделей
-data/*
-models/*
+data/raw/
+data/processed/
 reports/*.json
+reports/**/*.json
+reports/**/*.csv
+reports/**/*.html
+reports/**/*.png
+state/
 src/data/datasets/*.txt
 src/data/datasets/*.zip
 src/data/datasets/*.pdf
 
 # DVC
-.dvc/cache
+!*.dvc
+!.dvc/config
 
 # Редакторы и IDE
 .vscode/
@@ -41,6 +48,7 @@ src/data/datasets/*.pdf
 
 # Тестирование и покрытие
 .pytest_cache/
+.pytest-tmp/
 .mypy_cache/
 .coverage
 htmlcov/

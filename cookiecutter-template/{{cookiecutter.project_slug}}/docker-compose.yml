@@ -1,0 +1,25 @@
+services:
+  api:
+    build: .
+    ports:
+      - "{{ cookiecutter.fastapi_port }}:{{ cookiecutter.fastapi_port }}"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_REGISTERED_MODEL_NAME: "{{ cookiecutter.registered_model_name }}"
+    depends_on:
+      - mlflow
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:latest
+    ports:
+      - "5000:5000"
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:///mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+    volumes:
+      - mlflow-data:/mlflow
+
+volumes:
+  mlflow-data:

@@ -1,5 +1,10 @@
 {
   "project_name": "predictive-maintenance-mlops",
   "project_slug": "predictive-maintenance-mlops",
-  "author_name": "your_name"
+  "package_name": "predictive_maintenance_mlops",
+  "author_name": "your_name",
+  "python_version": "3.12",
+  "fastapi_port": "8080",
+  "mlflow_tracking_uri": "http://localhost:5000",
+  "registered_model_name": "predictive-maintenance-random-forest"
 }

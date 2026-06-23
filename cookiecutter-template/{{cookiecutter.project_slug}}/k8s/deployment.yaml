@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ cookiecutter.project_slug }}-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ cookiecutter.project_slug }}-api
+  template:
+    metadata:
+      labels:
+        app: {{ cookiecutter.project_slug }}-api
+    spec:
+      containers:
+        - name: api
+          image: {{ cookiecutter.project_slug }}:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: {{ cookiecutter.fastapi_port }}
+          env:
+            - name: MLFLOW_TRACKING_URI
+              value: "{{ cookiecutter.mlflow_tracking_uri }}"
+            - name: MLFLOW_REGISTERED_MODEL_NAME
+              value: "{{ cookiecutter.registered_model_name }}"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ cookiecutter.fastapi_port }}
+            initialDelaySeconds: 5
+            periodSeconds: 10

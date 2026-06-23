@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: predictive-maintenance-config
+  labels:
+    app: predictive-maintenance-api
+data:
+  MLFLOW_TRACKING_URI: "http://mlflow:5000"
+  MLFLOW_REGISTERED_MODEL_NAME: "predictive-maintenance-gradient-boosting"
+  MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+  ENABLE_METRICS: "true"
+  APP_STATE_DIR: "/app/state"
+  PREDICTION_DB_PATH: "/app/state/predictions.db"
+  REPORTS_DIR: "/app/state/reports"
+  DRIFT_DATA_PATH: "/app/data/raw"
+  PYTHONPATH: "/app/src:/app"

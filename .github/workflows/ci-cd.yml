@@ -1,0 +1,92 @@
+name: CI/CD
+
+on:
+  pull_request:
+    branches: ["main"]
+  push:
+    branches: ["main", "features"]
+  workflow_dispatch:
+
+jobs:
+  lint-test-build:
+    name: Lint, test, build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --all-extras --frozen
+
+      - name: Validate Docker Compose config
+        run: docker compose config --quiet
+
+      - name: Validate Kubernetes manifests
+        run: >
+          docker run --rm
+          -v "${{ github.workspace }}:/work"
+          ghcr.io/yannh/kubeconform:latest
+          -strict
+          -summary
+          /work/k8s
+
+      - name: Run linter
+        run: uv run flake8 src tests
+
+      - name: Check formatting
+        run: uv run black --check src tests
+
+      - name: Run tests
+        run: uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=60
+
+      - name: Build Docker image
+        run: docker build -t predictive-maintenance-mlops:latest .
+
+  deploy:
+    name: Deploy to kind
+    needs: lint-test-build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t predictive-maintenance-mlops:latest .
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1.12.0
+
+      - name: Load Docker image into kind
+        run: kind load docker-image predictive-maintenance-mlops:latest
+
+      - name: Deploy to Kubernetes
+        run: kubectl apply -f k8s/
+
+      - name: Wait for API deployment
+        run: kubectl rollout status deployment/predictive-maintenance-api --timeout=120s
+
+      - name: Smoke test API health endpoint
+        run: |
+          kubectl port-forward service/predictive-maintenance-api 8080:8080 > /tmp/api-port-forward.log 2>&1 &
+          for i in {1..30}; do
+            if curl --fail http://127.0.0.1:8080/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          cat /tmp/api-port-forward.log
+          exit 1

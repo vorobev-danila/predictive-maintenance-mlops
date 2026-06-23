@@ -1,0 +1,42 @@
+groups:
+  - name: drift-alerts
+    rules:
+      - alert: DataDriftDetected
+        expr: data_drift_detected == 1
+        for: 0s
+        labels:
+          severity: warning
+          drift_type: data
+        annotations:
+          summary: "Data drift detected"
+          description: "The latest data drift flag is active."
+
+      - alert: TargetDriftDetected
+        expr: target_drift_detected == 1
+        for: 0s
+        labels:
+          severity: warning
+          drift_type: target
+        annotations:
+          summary: "Target drift detected"
+          description: "The latest target drift flag is active."
+
+      - alert: ConceptDriftDetected
+        expr: concept_drift_detected == 1
+        for: 0s
+        labels:
+          severity: critical
+          drift_type: concept
+        annotations:
+          summary: "Concept drift detected"
+          description: "The latest concept drift flag is active."
+
+      - alert: AnyDriftDetected
+        expr: data_drift_detected == 1 or target_drift_detected == 1 or concept_drift_detected == 1
+        for: 0s
+        labels:
+          severity: warning
+          drift_type: any
+        annotations:
+          summary: "At least one drift type is active"
+          description: "Data, target, or concept drift is currently detected."

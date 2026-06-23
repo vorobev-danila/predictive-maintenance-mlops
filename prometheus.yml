@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s  # опрос
+  evaluation_interval: 5s  # праивла алертов
+
+rule_files:
+  - /etc/prometheus/alert_rules.yml
+
+scrape_configs:
+  - job_name: 'fastapi_app'
+    static_configs:
+      - targets: ['api:8080']
