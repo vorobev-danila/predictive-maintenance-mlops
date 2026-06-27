@@ -13,12 +13,14 @@
 Start the full local stack:
 
 ```bash
+cp .env.example .env
 docker compose up --build
 ```
 
 Start only infrastructure services:
 
 ```bash
+cp .env.example .env
 docker compose up -d minio mlflow prometheus grafana
 ```
 
@@ -39,18 +41,21 @@ docker compose config --quiet
 | Prometheus | `http://localhost:9090` |
 | Grafana | `http://localhost:3000` |
 
+Credentials are read from the local `.env` file. Use strong local values and do
+not commit `.env`.
+
 MinIO:
 
 ```text
-login: minio
-password: minio123
+login: MINIO_ROOT_USER from .env
+password: MINIO_ROOT_PASSWORD from .env
 ```
 
 Grafana:
 
 ```text
 login: admin
-password: admin
+password: GRAFANA_ADMIN_PASSWORD from .env
 ```
 
 ## Manual Image Build

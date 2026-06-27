@@ -8,6 +8,7 @@ data:
   MLFLOW_TRACKING_URI: "http://mlflow:5000"
   MLFLOW_REGISTERED_MODEL_NAME: "predictive-maintenance-gradient-boosting"
   MLFLOW_S3_ENDPOINT_URL: "http://minio:9000"
+  ENABLE_MLFLOW_LOGGING: "true"
   ENABLE_METRICS: "true"
   APP_STATE_DIR: "/app/state"
   PREDICTION_DB_PATH: "/app/state/predictions.db"

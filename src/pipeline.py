@@ -29,6 +29,11 @@ from src.models.train_model import (  # noqa: E402
 DATASET_ID = "FD001"
 FEATURE_SET = "all_raw_features_no_feature_engineering"
 MODEL_NAME = "GradientBoostingRegressor"
+REQUIRED_MLFLOW_ENV_VARS = (
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "MLFLOW_S3_ENDPOINT_URL",
+)
 
 
 def ensure_minio_bucket(bucket_name="mlflow"):
@@ -54,9 +59,15 @@ def configure_mlflow():
     tracking_uri = os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
     experiment_name = os.getenv("MLFLOW_EXPERIMENT_NAME", "predictive-maintenance")
 
-    os.environ.setdefault("AWS_ACCESS_KEY_ID", "minio")
-    os.environ.setdefault("AWS_SECRET_ACCESS_KEY", "minio123")
-    os.environ.setdefault("MLFLOW_S3_ENDPOINT_URL", "http://localhost:9000")
+    missing_env_vars = [
+        variable for variable in REQUIRED_MLFLOW_ENV_VARS if not os.getenv(variable)
+    ]
+    if missing_env_vars:
+        missing = ", ".join(missing_env_vars)
+        raise OSError(
+            f"Missing MLflow artifact storage environment variables: {missing}"
+        )
+
     ensure_minio_bucket("mlflow")
 
     mlflow.set_tracking_uri(tracking_uri)

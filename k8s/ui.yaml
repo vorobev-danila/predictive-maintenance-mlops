@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: ui
-          image: predictive-maintenance-mlops:latest
+          image: ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest
           imagePullPolicy: IfNotPresent
           command:
             - python
@@ -38,19 +38,19 @@ spec:
             - name: API_URL
               value: "http://predictive-maintenance-api:8080"
             - name: API_PUBLIC_URL
-              value: "http://localhost:30080"
+              value: "http://localhost:8080"
             - name: GRAFANA_URL
-              value: "http://localhost:30300"
+              value: "http://localhost:3000"
             - name: PROMETHEUS_URL
               value: "http://prometheus:9090"
             - name: PROMETHEUS_PUBLIC_URL
-              value: "http://localhost:30099"
+              value: "http://localhost:9090"
             - name: MLFLOW_URL
-              value: "http://localhost:30500"
+              value: "http://localhost:5000"
             - name: MLFLOW_API_URL
               value: "http://mlflow:5000"
             - name: MINIO_URL
-              value: "http://localhost:30091"
+              value: "http://localhost:9001"
             - name: PYTHONPATH
               value: "/app/src:/app"
           readinessProbe:

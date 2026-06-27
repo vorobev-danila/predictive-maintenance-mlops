@@ -8,7 +8,7 @@
 - [Application manifest](#application-manifest)
 - [Run in Minikube](#run-in-minikube)
 - [Sync and validate](#sync-and-validate)
-- [Image note](#image-note)
+- [Image flow](#image-flow)
 
 ## Purpose
 
@@ -47,11 +47,19 @@ kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/st
 kubectl rollout status deployment/argocd-server -n argocd --timeout=180s
 ```
 
-Build and load the local image used by both API and Streamlit UI:
+The default Kubernetes manifests use the GHCR image:
+
+```text
+ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest
+```
+
+After a merge to `main`, GitHub Actions builds and pushes this image
+automatically. For a local-only demo before the image is available in GHCR,
+build and load the same tag into Minikube:
 
 ```bash
-docker build -t predictive-maintenance-mlops:latest .
-minikube image load predictive-maintenance-mlops:latest
+docker build -t ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest .
+minikube image load ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest
 ```
 
 Create the Argo CD application:
@@ -97,9 +105,15 @@ kubectl port-forward service/grafana 3000:3000
 kubectl port-forward service/prometheus 9090:9090
 ```
 
-## Image Note
+## Image Flow
 
-Argo CD applies Kubernetes manifests but does not build Docker images. For this
-educational Minikube setup, build the image locally and load it into Minikube
-before syncing. In a registry-based setup, push the image to a registry and
-update the `image` fields in `k8s/`.
+Argo CD applies Kubernetes manifests but does not build Docker images. The image
+flow is:
+
+1. GitHub Actions validates the project.
+2. On `push` to `main`, GitHub Actions pushes `latest` and the commit SHA tag to
+   GHCR.
+3. Argo CD syncs `k8s/` manifests that reference the GHCR image.
+
+If the GHCR package is private, make it public for the educational demo or add a
+Kubernetes `imagePullSecret`.
