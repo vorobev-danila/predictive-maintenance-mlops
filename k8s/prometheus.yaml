@@ -10,10 +10,56 @@ data:
       scrape_interval: 5s
       evaluation_interval: 5s
 
+    rule_files:
+      - /etc/prometheus/alert_rules.yml
+
     scrape_configs:
       - job_name: "fastapi_app"
         static_configs:
           - targets: ["predictive-maintenance-api:8080"]
+  alert_rules.yml: |
+    groups:
+      - name: drift-alerts
+        rules:
+          - alert: DataDriftDetected
+            expr: data_drift_detected == 1
+            for: 0s
+            labels:
+              severity: warning
+              drift_type: data
+            annotations:
+              summary: "Data drift detected"
+              description: "The latest data drift flag is active."
+
+          - alert: TargetDriftDetected
+            expr: target_drift_detected == 1
+            for: 0s
+            labels:
+              severity: warning
+              drift_type: target
+            annotations:
+              summary: "Target drift detected"
+              description: "The latest target drift flag is active."
+
+          - alert: ConceptDriftDetected
+            expr: concept_drift_detected == 1
+            for: 0s
+            labels:
+              severity: critical
+              drift_type: concept
+            annotations:
+              summary: "Concept drift detected"
+              description: "The latest concept drift flag is active."
+
+          - alert: AnyDriftDetected
+            expr: data_drift_detected == 1 or target_drift_detected == 1 or concept_drift_detected == 1
+            for: 0s
+            labels:
+              severity: warning
+              drift_type: any
+            annotations:
+              summary: "At least one drift type is active"
+              description: "Data, target, or concept drift is currently detected."
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -23,6 +69,8 @@ metadata:
     app: prometheus
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: prometheus
@@ -43,6 +91,9 @@ spec:
             - name: prometheus-config
               mountPath: /etc/prometheus/prometheus.yml
               subPath: prometheus.yml
+            - name: prometheus-config
+              mountPath: /etc/prometheus/alert_rules.yml
+              subPath: alert_rules.yml
             - name: prometheus-data
               mountPath: /prometheus
       volumes:

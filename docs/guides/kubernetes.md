@@ -1,6 +1,6 @@
 # Kubernetes / Minikube Guide
 
-[← Back to README](../../README.md)
+[Back to README](../../README.md)
 
 ## Contents
 
@@ -20,12 +20,41 @@ persistent volumes and rollout checks.
 
 ## Run in Minikube
 
-Build the image, load it into Minikube and apply manifests:
+By default, Kubernetes manifests use the GHCR image:
+
+```text
+ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest
+```
+
+After `main` is updated, GitHub Actions publishes this image automatically.
+For a local-only Minikube demo before GHCR has the image, build and load the
+same tag manually:
 
 ```bash
 minikube start
-docker build -t predictive-maintenance-mlops:latest .
-minikube image load predictive-maintenance-mlops:latest
+docker build -t ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest .
+minikube image load ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest
+```
+
+Create runtime secrets from local environment variables before applying
+manifests. Do not commit real secret values:
+
+```bash
+kubectl create secret generic predictive-maintenance-secrets \
+  --from-literal=MINIO_ROOT_USER="$MINIO_ROOT_USER" \
+  --from-literal=MINIO_ROOT_PASSWORD="$MINIO_ROOT_PASSWORD" \
+  --from-literal=AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" \
+  --from-literal=AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" \
+  --from-literal=GRAFANA_ADMIN_PASSWORD="$GRAFANA_ADMIN_PASSWORD" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+An example manifest with placeholder values is available at
+[`docs/reference/kubernetes-secret.example.yaml`](../reference/kubernetes-secret.example.yaml).
+
+Then apply manifests:
+
+```bash
 kubectl apply -f k8s/
 kubectl rollout status deployment/predictive-maintenance-api
 kubectl rollout status deployment/minio
@@ -67,13 +96,14 @@ kubectl port-forward service/grafana 3000:3000
 Kubernetes manifests include:
 
 - API Deployment and NodePort Service;
+- Streamlit UI Deployment and Service;
 - MinIO Deployment, Service and bucket creation Job;
 - MLflow Deployment and Service;
 - Prometheus Deployment, Service and ConfigMap;
-- Grafana Deployment and Service;
-- Streamlit UI Deployment and Service;
+- Grafana Deployment, Service and provisioning ConfigMap;
 - PVC for API state, MinIO, MLflow, Prometheus and Grafana;
-- ConfigMap and Secret for runtime settings.
+- ConfigMap for runtime settings;
+- Kubernetes Secret created outside the committed `k8s/` directory.
 
 Validate manifests:
 
@@ -94,12 +124,14 @@ validation commands.
 
 ## SQLite State
 
-Prediction history and future drift metadata use SQLite in the API state PVC.
+Prediction history and drift reports use SQLite and JSON files in the API state
+PVC.
 
-Kubernetes path:
+Kubernetes paths:
 
 ```text
 /app/state/predictions.db
+/app/state/reports
 ```
 
 This is enough for a single-replica educational Minikube setup. If the API later

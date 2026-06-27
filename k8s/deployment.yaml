@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: predictive-maintenance-mlops:latest
+          image: ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8080

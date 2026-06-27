@@ -21,7 +21,7 @@ def test_ensure_minio_bucket_creates_missing_bucket(monkeypatch):
     fake_client = FakeS3Client(error_code="404")
     monkeypatch.setenv("MLFLOW_S3_ENDPOINT_URL", "http://localhost:9000")
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "minio")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "minio123")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
     monkeypatch.setattr(pipeline.boto3, "client", lambda *args, **kwargs: fake_client)
 
     pipeline.ensure_minio_bucket("mlflow")
@@ -33,7 +33,7 @@ def test_ensure_minio_bucket_does_not_create_existing_bucket(monkeypatch):
     fake_client = FakeS3Client()
     monkeypatch.setenv("MLFLOW_S3_ENDPOINT_URL", "http://localhost:9000")
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "minio")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "minio123")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
     monkeypatch.setattr(pipeline.boto3, "client", lambda *args, **kwargs: fake_client)
 
     pipeline.ensure_minio_bucket("mlflow")
@@ -45,7 +45,7 @@ def test_ensure_minio_bucket_reraises_unexpected_error(monkeypatch):
     fake_client = FakeS3Client(error_code="403")
     monkeypatch.setenv("MLFLOW_S3_ENDPOINT_URL", "http://localhost:9000")
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "minio")
-    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "minio123")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "test-secret")
     monkeypatch.setattr(pipeline.boto3, "client", lambda *args, **kwargs: fake_client)
 
     try:

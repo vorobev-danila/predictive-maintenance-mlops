@@ -52,11 +52,11 @@ Local MinIO UI:
 http://localhost:9001
 ```
 
-Default local credentials:
+Local credentials are read from `.env`:
 
 ```text
-login: minio
-password: minio123
+login: MINIO_ROOT_USER
+password: MINIO_ROOT_PASSWORD
 ```
 
 ## DVC Data Versioning
@@ -82,15 +82,15 @@ dvc
 For local shell access to MinIO-backed DVC:
 
 ```bash
-export AWS_ACCESS_KEY_ID=minio
-export AWS_SECRET_ACCESS_KEY=minio123
+export AWS_ACCESS_KEY_ID="<your-minio-access-key>"
+export AWS_SECRET_ACCESS_KEY="<your-minio-secret-key>"
 ```
 
 PowerShell:
 
 ```powershell
-$env:AWS_ACCESS_KEY_ID="minio"
-$env:AWS_SECRET_ACCESS_KEY="minio123"
+$env:AWS_ACCESS_KEY_ID="<your-minio-access-key>"
+$env:AWS_SECRET_ACCESS_KEY="<your-minio-secret-key>"
 ```
 
 Do not store secrets in `.dvc/config`. In Kubernetes, credentials are provided

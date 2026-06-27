@@ -7,6 +7,7 @@
 - [Workflow file](#workflow-file)
 - [Triggers](#triggers)
 - [Pipeline steps](#pipeline-steps)
+- [Image publishing](#image-publishing)
 - [Local parity](#local-parity)
 
 ## Workflow File
@@ -45,11 +46,12 @@ The `lint-test-build` job runs:
 7. `uv run flake8 src tests`;
 8. `uv run black --check src tests`;
 9. `uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=60`;
-10. `docker build`.
+10. `docker build`;
+11. push Docker image to GHCR on `main`.
 
 The `deploy` job runs for pull requests and `main`:
 
-1. build Docker image;
+1. build Docker image with the same GHCR tag used by Kubernetes manifests;
 2. create temporary kind cluster;
 3. load image into kind;
 4. `kubectl apply -f k8s/`;
@@ -60,6 +62,30 @@ For a persistent Kubernetes / Minikube environment, Argo CD watches the `k8s/`
 directory and keeps the cluster synchronized with Git. See
 [Argo CD workflow](argocd.md).
 
+## Image Publishing
+
+The workflow uses:
+
+```text
+ghcr.io/${{ github.repository }}
+```
+
+On `push` to `main`, it publishes:
+
+```text
+latest
+${{ github.sha }}
+```
+
+Kubernetes manifests currently reference:
+
+```text
+ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest
+```
+
+For forks, update the image in `k8s/deployment.yaml` and `k8s/ui.yaml`, or set up
+an equivalent GHCR package under the fork owner.
+
 ## Local Parity
 
 Before pushing, run:
@@ -69,5 +95,5 @@ uv run flake8 src tests
 uv run black --check src tests
 uv run pytest --cov=src --cov-report=term-missing --cov-fail-under=60
 docker compose config --quiet
-docker build -t predictive-maintenance-mlops:ci-check .
+docker build -t ghcr.io/vorobev-danila/predictive-maintenance-mlops:latest .
 ```

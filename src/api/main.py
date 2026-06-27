@@ -693,6 +693,13 @@ def update_drift_simulation_metrics(window_result):
     model_prediction_error_p95_gauge.set(float(window_result["prediction_error_p95"]))
     model_actual_rul_mean_gauge.set(float(window_result["actual_rul_mean"]))
     model_predicted_rul_mean_gauge.set(float(window_result["predicted_rul_mean"]))
+    actual_rul_gauge.set(float(window_result["actual_rul_mean"]))
+    predicted_rul_gauge.set(float(window_result["predicted_rul_mean"]))
+    prediction_error = float(window_result["predicted_rul_mean"]) - float(
+        window_result["actual_rul_mean"]
+    )
+    prediction_error_gauge.set(prediction_error)
+    absolute_error_gauge.set(abs(prediction_error))
 
 
 @app.post("/reset_metrics")

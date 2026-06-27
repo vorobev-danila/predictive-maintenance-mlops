@@ -6,6 +6,8 @@ metadata:
     app: grafana
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: grafana
@@ -21,14 +23,35 @@ spec:
             - containerPort: 3000
           env:
             - name: GF_SECURITY_ADMIN_PASSWORD
-              value: "admin"
+              valueFrom:
+                secretKeyRef:
+                  name: predictive-maintenance-secrets
+                  key: GRAFANA_ADMIN_PASSWORD
+            - name: GF_SECURITY_ALLOW_EMBEDDING
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ENABLED
+              value: "true"
+            - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+              value: "Viewer"
           volumeMounts:
             - name: grafana-data
               mountPath: /var/lib/grafana
+            - name: grafana-provisioning
+              mountPath: /etc/grafana/provisioning/datasources/prometheus.yml
+              subPath: prometheus.yml
+            - name: grafana-provisioning
+              mountPath: /etc/grafana/provisioning/dashboards/dashboard.yml
+              subPath: dashboard.yml
+            - name: grafana-provisioning
+              mountPath: /var/lib/grafana/dashboards/mlops-monitoring.json
+              subPath: mlops-monitoring.json
       volumes:
         - name: grafana-data
           persistentVolumeClaim:
             claimName: grafana-data-pvc
+        - name: grafana-provisioning
+          configMap:
+            name: grafana-provisioning
 ---
 apiVersion: v1
 kind: Service
